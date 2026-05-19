@@ -18,7 +18,14 @@ pub mod data {
     pub use effect_data::*;
 }
 
+/// Schemas: re-export of [`effect_schema`] so users can reach them as
+/// `effect::schema::Schema`, etc.
+pub mod schema {
+    pub use effect_schema::*;
+}
+
 pub use effect_macros::{Brand, Newtype};
+pub use effect_schema::{Schema, SchemaError};
 pub use exit::{Cause, Defect, Exit};
 pub use refinement::Refinement;
 pub use schedule::{Schedule, ScheduleStep};

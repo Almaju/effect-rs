@@ -4,6 +4,7 @@ members = [
     "crates/effect",
     "crates/effect-data",
     "crates/effect-macros",
+    "crates/effect-schema",
     "examples/todo",
 ]
 
@@ -20,3 +21,4 @@ async-channel = "2"
 effect = { path = "crates/effect", version = "0.0.1" }
 effect-data = { path = "crates/effect-data", version = "0.0.1" }
 effect-macros = { path = "crates/effect-macros", version = "0.0.1" }
+effect-schema = { path = "crates/effect-schema", version = "0.0.1" }

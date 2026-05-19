@@ -1,0 +1,13 @@
+[package]
+name = "effect-schema"
+version = "0.0.1"
+description = "Schemas for parse / encode / validate / introspect — the core trait and built-in impls"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde_json = "1"
+thiserror = "2"
