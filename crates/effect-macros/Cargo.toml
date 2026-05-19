@@ -15,3 +15,9 @@ proc-macro = true
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+
+# Note: the generated code references `::effect_schema` and
+# `::serde_json` paths; users must have these crates in their dep
+# graph (which they do automatically via the `effect` crate's
+# re-exports).
+

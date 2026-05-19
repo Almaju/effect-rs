@@ -20,6 +20,7 @@
 
 # Data
 
+- [Schemas](./data/schemas.md)
 - [Newtypes and Brands](./data/newtypes.md)
 - [Typeclasses](./data/typeclasses.md)
 - [Collections](./data/collections.md)

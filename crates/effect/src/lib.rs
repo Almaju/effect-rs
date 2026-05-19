@@ -24,7 +24,10 @@ pub mod schema {
     pub use effect_schema::*;
 }
 
-pub use effect_macros::{Brand, Newtype};
+// Both the derive macro and the trait are exported under the name
+// `Schema`. They live in different namespaces (macro / type) so they
+// don't collide, mirroring how serde re-exports `Serialize`.
+pub use effect_macros::{Brand, Newtype, Schema};
 pub use effect_schema::{Schema, SchemaError};
 pub use exit::{Cause, Defect, Exit};
 pub use refinement::Refinement;

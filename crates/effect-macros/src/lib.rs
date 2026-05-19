@@ -1,8 +1,10 @@
 //! Procedural macros for the [`effect`] crate.
 //!
 //! - [`Newtype`] — derive for opaque single-field tuple structs.
-//! - [`Brand`] — derive a validated `try_new` constructor for a
+//! - [`Brand`]   — derive a validated `try_new` constructor for a
 //!   newtype, given a `Refinement` impl.
+//! - [`Schema`]  — derive parse/encode/json_schema for named-field
+//!   structs, treating `Option<T>` fields as optional.
 //!
 //! All macros are re-exported from `effect`; users should depend on
 //! `effect`, not on `effect-macros` directly.
@@ -155,6 +157,158 @@ fn extract_refiner(input: &DeriveInput) -> syn::Result<syn::Path> {
             "#[derive(Brand)] requires #[brand(refine_with = SomeRefiner)]",
         )
     })
+}
+
+// ── #[derive(Schema)] ─────────────────────────────────────────────
+
+/// Derive macro for `Schema` on named-field structs.
+///
+/// Generated impl:
+/// - `parse_json`: requires an object; each field is parsed, errors
+///   carry the field name via `SchemaError::at_field`.
+/// - `encode_json`: emits a JSON object with all fields (`None`
+///   encoded as `null`).
+/// - `json_schema`: emits a JSON Schema `object` with `properties` and
+///   `required` (Option fields are excluded from `required`).
+///
+/// `Option<T>` fields are treated as optional in the input — a missing
+/// key parses as `None` (in addition to `null`).
+///
+/// ```ignore
+/// use effect::Schema;
+///
+/// #[derive(Schema)]
+/// pub struct User {
+///     pub name: String,
+///     pub age: u32,
+///     pub nickname: Option<String>,
+/// }
+/// ```
+#[proc_macro_derive(Schema)]
+pub fn derive_schema(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_schema(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn expand_schema(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let name = &input.ident;
+
+    let Data::Struct(s) = &input.data else {
+        return Err(syn::Error::new_spanned(
+            input,
+            "#[derive(Schema)] supports structs only (enums and unions are TODO)",
+        ));
+    };
+    let Fields::Named(fields) = &s.fields else {
+        return Err(syn::Error::new_spanned(
+            input,
+            "#[derive(Schema)] requires a struct with named fields",
+        ));
+    };
+
+    let mut parse_arms = Vec::new();
+    let mut encode_inserts = Vec::new();
+    let mut property_inserts = Vec::new();
+    let mut required_lits = Vec::new();
+
+    for field in &fields.named {
+        let ident = field
+            .ident
+            .as_ref()
+            .expect("named field has an identifier");
+        let ty = &field.ty;
+        let name_str = ident.to_string();
+        let is_opt = is_option_type(ty);
+
+        if is_opt {
+            parse_arms.push(quote::quote! {
+                #ident: match __obj.get(#name_str) {
+                    ::core::option::Option::Some(__v) => {
+                        <#ty as ::effect_schema::Schema>::parse_json(__v)
+                            .map_err(|__e| ::effect_schema::SchemaError::at_field(#name_str, __e))?
+                    }
+                    ::core::option::Option::None => ::core::option::Option::None,
+                },
+            });
+        } else {
+            parse_arms.push(quote::quote! {
+                #ident: {
+                    let __v = __obj.get(#name_str).ok_or_else(
+                        || ::effect_schema::SchemaError::missing_field(#name_str)
+                    )?;
+                    <#ty as ::effect_schema::Schema>::parse_json(__v)
+                        .map_err(|__e| ::effect_schema::SchemaError::at_field(#name_str, __e))?
+                },
+            });
+            required_lits.push(quote::quote! {
+                ::effect_schema::serde_json::Value::String(#name_str.to_string())
+            });
+        }
+
+        encode_inserts.push(quote::quote! {
+            __obj.insert(
+                #name_str.to_string(),
+                <#ty as ::effect_schema::Schema>::encode_json(&self.#ident),
+            );
+        });
+
+        property_inserts.push(quote::quote! {
+            __props.insert(
+                #name_str.to_string(),
+                <#ty as ::effect_schema::Schema>::json_schema(),
+            );
+        });
+    }
+
+    Ok(quote::quote! {
+        impl ::effect_schema::Schema for #name {
+            fn parse_json(
+                __input: &::effect_schema::serde_json::Value,
+            ) -> ::core::result::Result<Self, ::effect_schema::SchemaError> {
+                let __obj = __input.as_object().ok_or_else(
+                    || ::effect_schema::SchemaError::type_mismatch("object", __input)
+                )?;
+                ::core::result::Result::Ok(Self {
+                    #(#parse_arms)*
+                })
+            }
+
+            fn encode_json(&self) -> ::effect_schema::serde_json::Value {
+                let mut __obj = ::effect_schema::serde_json::Map::new();
+                #(#encode_inserts)*
+                ::effect_schema::serde_json::Value::Object(__obj)
+            }
+
+            fn json_schema() -> ::effect_schema::serde_json::Value {
+                let mut __props = ::effect_schema::serde_json::Map::new();
+                #(#property_inserts)*
+                ::effect_schema::serde_json::Value::Object({
+                    let mut __spec = ::effect_schema::serde_json::Map::new();
+                    __spec.insert("type".to_string(), ::effect_schema::serde_json::Value::String("object".to_string()));
+                    __spec.insert("properties".to_string(), ::effect_schema::serde_json::Value::Object(__props));
+                    __spec.insert(
+                        "required".to_string(),
+                        ::effect_schema::serde_json::Value::Array(vec![#(#required_lits),*]),
+                    );
+                    __spec
+                })
+            }
+        }
+    })
+}
+
+/// Recognize `Option<T>` (or any path ending in `Option`). Doesn't
+/// handle `Option<T>` aliased as another name.
+fn is_option_type(ty: &Type) -> bool {
+    if let Type::Path(p) = ty {
+        if let Some(last) = p.path.segments.last() {
+            return last.ident == "Option";
+        }
+    }
+    false
 }
 
 fn extract_inner(input: &DeriveInput) -> syn::Result<&Type> {

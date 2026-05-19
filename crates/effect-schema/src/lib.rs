@@ -22,6 +22,11 @@ pub mod primitives;
 
 pub use error::SchemaError;
 
+// Re-export so derive-macro-generated code can reference
+// `::effect_schema::serde_json::*` without the user needing
+// `serde_json` directly in their Cargo.toml.
+pub use serde_json;
+
 use serde_json::Value;
 
 /// A value type that knows how to parse from / encode to JSON and how
