@@ -1,0 +1,15 @@
+[package]
+name = "effect"
+version = "0.0.1"
+description = "A functional effect framework for Rust, inspired by Effect-TS"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

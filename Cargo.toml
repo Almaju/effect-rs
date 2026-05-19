@@ -1,0 +1,17 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/effect",
+    "examples/todo",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+authors = ["Alexandre Hanot"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Almaju/effect-rs"
+
+[workspace.dependencies]
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "sync", "time"] }
+effect = { path = "crates/effect", version = "0.0.1" }

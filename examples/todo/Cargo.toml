@@ -1,0 +1,14 @@
+[package]
+name = "effect-example-todo"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "todo"
+path = "src/main.rs"
+
+[dependencies]
+effect = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

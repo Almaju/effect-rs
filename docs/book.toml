@@ -1,0 +1,17 @@
+[book]
+title = "effect-rs"
+authors = ["Alexandre Hanot"]
+description = "A functional effect framework for Rust, inspired by Effect-TS"
+src = "src"
+language = "en"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+no-section-label = false
+git-repository-url = "https://github.com/Almaju/effect-rs"
+edit-url-template = "https://github.com/Almaju/effect-rs/edit/main/docs/{path}"
+
+[output.html.fold]
+enable = true
+level = 1
