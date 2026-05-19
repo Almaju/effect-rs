@@ -7,8 +7,10 @@
 //! - Requires an environment of type `R` to execute
 
 pub mod exit;
+pub mod sync;
 
 pub use exit::{Cause, Defect, Exit};
+pub use sync::{Deferred, Queue, Ref};
 
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};

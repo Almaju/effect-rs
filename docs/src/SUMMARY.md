@@ -13,6 +13,7 @@
 - [The Effect Type](./core/the-effect-type.md)
 - [Layers and the Runtime](./core/layers-and-runtime.md)
 - [Errors and Cause](./core/errors-and-cause.md)
+- [State and Synchronization](./core/state-and-sync.md)
 - [Scopes and Resources](./core/scopes-and-resources.md)
 - [Concurrency](./core/concurrency.md)
 

@@ -1,6 +1,8 @@
 # Concurrency
 
-Two effects today; many more after Phase 1.
+Two structural combinators today, plus the
+[state-and-synchronization primitives](./state-and-sync.md) — `Ref`,
+`Deferred`, `Queue`. Many more after Phase 1's interpreter lands.
 
 ## Available now
 

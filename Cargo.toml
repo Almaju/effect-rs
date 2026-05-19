@@ -14,4 +14,5 @@ repository = "https://github.com/Almaju/effect-rs"
 
 [workspace.dependencies]
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "sync", "time"] }
+async-channel = "2"
 effect = { path = "crates/effect", version = "0.0.1" }
