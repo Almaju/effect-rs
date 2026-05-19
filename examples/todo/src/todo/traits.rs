@@ -5,20 +5,20 @@
 //!
 //! ```ignore
 //! // This effect requires a repo:
-//! fn get_todo<R: HasRepo>(id: u64) -> Effect<Todo, TodoError, R>
+//! fn get_todo<R: TodoRepo>(id: u64) -> Effect<Todo, TodoError, R>
 //!
 //! // This one requires repo + logger — bounds accumulate:
-//! fn create_and_log<R: HasRepo + HasLogger>(t: String) -> Effect<Todo, TodoError, R>
+//! fn create_and_log<R: TodoRepo + Logger>(t: String) -> Effect<Todo, TodoError, R>
 //! ```
 
 use super::repo::InMemoryTodoRepo;
 
-/// Declares that a context provides access to a todo repository.
-pub trait HasRepo: Send + Sync + 'static {
+/// The todo repository service.
+pub trait TodoRepo: Send + Sync + 'static {
     fn repo(&self) -> &InMemoryTodoRepo;
 }
 
-/// Declares that a context provides logging capabilities.
-pub trait HasLogger: Send + Sync + 'static {
+/// The logger service.
+pub trait Logger: Send + Sync + 'static {
     fn log(&self, msg: &str);
 }

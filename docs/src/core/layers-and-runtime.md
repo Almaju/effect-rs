@@ -8,15 +8,15 @@ that satisfies every accumulated bound.
 
 ## Declaring a service
 
-A service is just a trait. The Rust compiler treats `R: HasFoo + HasBar`
+A service is just a trait. The Rust compiler treats `R: Foo + Bar`
 as a structural requirement that propagates through composition.
 
 ```rust,no_run
-pub trait HasLogger: Send + Sync + 'static {
+pub trait Logger: Send + Sync + 'static {
     fn log(&self, msg: &str);
 }
 
-pub trait HasRepo: Send + Sync + 'static {
+pub trait TodoRepo: Send + Sync + 'static {
     fn repo(&self) -> &InMemoryTodoRepo;
 }
 # pub struct InMemoryTodoRepo;
@@ -33,8 +33,8 @@ required service.
 
 ```rust,no_run
 # use effect::Effect; use std::sync::Arc;
-# pub trait HasRepo: Send + Sync + 'static { fn repo(&self) -> &InMemoryTodoRepo; }
-# pub trait HasLogger: Send + Sync + 'static { fn log(&self, msg: &str); }
+# pub trait TodoRepo: Send + Sync + 'static { fn repo(&self) -> &InMemoryTodoRepo; }
+# pub trait Logger: Send + Sync + 'static { fn log(&self, msg: &str); }
 # pub struct InMemoryTodoRepo;
 # impl InMemoryTodoRepo {
 #     pub fn create(&self, title: String) -> Result<Todo, TodoError> {
@@ -43,14 +43,14 @@ required service.
 # }
 # #[derive(Clone)] pub struct Todo { pub id: u64, pub title: String, pub completed: bool }
 # #[derive(Debug)] pub enum TodoError { Invalid(String) }
-fn create_todo<R: HasRepo>(title: String) -> Effect<Todo, TodoError, R> {
+fn create_todo<R: TodoRepo>(title: String) -> Effect<Todo, TodoError, R> {
     Effect::from_fn(move |ctx: Arc<R>| {
         let title = title.clone();
         async move { ctx.repo().create(title) }
     })
 }
 
-fn log_action<R: HasLogger>(msg: String) -> Effect<(), TodoError, R> {
+fn log_action<R: Logger>(msg: String) -> Effect<(), TodoError, R> {
     Effect::from_fn(move |ctx: Arc<R>| {
         let msg = msg.clone();
         async move { ctx.log(&msg); Ok(()) }
@@ -58,7 +58,7 @@ fn log_action<R: HasLogger>(msg: String) -> Effect<(), TodoError, R> {
 }
 
 // Bounds accumulate automatically:
-fn create_and_log<R: HasRepo + HasLogger>(title: String) -> Effect<Todo, TodoError, R> {
+fn create_and_log<R: TodoRepo + Logger>(title: String) -> Effect<Todo, TodoError, R> {
     create_todo(title).flat_map(|t| {
         let msg = format!("Created: {}", t.title);
         log_action(msg).as_value(t)
@@ -66,7 +66,7 @@ fn create_and_log<R: HasRepo + HasLogger>(title: String) -> Effect<Todo, TodoErr
 }
 ```
 
-The signature `R: HasRepo + HasLogger` is **the contract**. Skip
+The signature `R: TodoRepo + Logger` is **the contract**. Skip
 providing a logger and the program won't compile.
 
 ## Building the context — the Layer pattern
@@ -76,8 +76,8 @@ time. Each `.with_*()` call extends the type so that the resulting
 context implements one more trait.
 
 ```rust,no_run
-# pub trait HasRepo: Send + Sync + 'static { fn repo(&self) -> &InMemoryTodoRepo; }
-# pub trait HasLogger: Send + Sync + 'static { fn log(&self, msg: &str); }
+# pub trait TodoRepo: Send + Sync + 'static { fn repo(&self) -> &InMemoryTodoRepo; }
+# pub trait Logger: Send + Sync + 'static { fn log(&self, msg: &str); }
 # pub struct InMemoryTodoRepo;
 # impl InMemoryTodoRepo { pub fn new() -> Self { Self } }
 use effect::Runtime;
@@ -88,19 +88,19 @@ pub struct WithRepo<I> { repo: InMemoryTodoRepo, inner: I }
 pub struct WithLogger<I> { logger: ConsoleLogger, inner: I }
 
 // Direct impls — each wrapper provides one service.
-impl<I: Send + Sync + 'static> HasRepo for WithRepo<I> {
+impl<I: Send + Sync + 'static> TodoRepo for WithRepo<I> {
     fn repo(&self) -> &InMemoryTodoRepo { &self.repo }
 }
-impl<I: Send + Sync + 'static> HasLogger for WithLogger<I> {
+impl<I: Send + Sync + 'static> Logger for WithLogger<I> {
     fn log(&self, msg: &str) { println!("[LOG] {msg}"); }
 }
 
 // Forwarding impls — each wrapper passes through services it doesn't
 // itself provide. This is what makes ordering irrelevant.
-impl<I: HasLogger + Send + Sync + 'static> HasLogger for WithRepo<I> {
+impl<I: Logger + Send + Sync + 'static> Logger for WithRepo<I> {
     fn log(&self, msg: &str) { self.inner.log(msg) }
 }
-impl<I: HasRepo + Send + Sync + 'static> HasRepo for WithLogger<I> {
+impl<I: TodoRepo + Send + Sync + 'static> TodoRepo for WithLogger<I> {
     fn repo(&self) -> &InMemoryTodoRepo { self.inner.repo() }
 }
 
@@ -129,14 +129,14 @@ let runtime = Layer::new()
     .with_logger()
     .into_runtime();
 
-// Compiles only because runtime's context satisfies HasRepo + HasLogger.
+// Compiles only because runtime's context satisfies TodoRepo + Logger.
 runtime.run(&create_and_log("Buy milk".into())).await?;
 ```
 
 Forgetting a layer is a **compile error**, not a runtime panic:
 
 ```text
-error[E0277]: the trait bound `WithRepo<()>: HasLogger` is not satisfied
+error[E0277]: the trait bound `WithRepo<()>: Logger` is not satisfied
 ```
 
 That's the whole point — the dependencies are part of the type.

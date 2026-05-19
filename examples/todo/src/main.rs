@@ -19,7 +19,7 @@ async fn main() {
         .with_logger()
         .into_runtime();
 
-    // create_and_log requires R: HasRepo + HasLogger.
+    // create_and_log requires R: TodoRepo + Logger.
     // The runtime's context satisfies both — this compiles!
     let exit = runtime.run(&create_and_log("Buy groceries".into())).await;
     println!("  {exit:?}\n");
@@ -27,12 +27,12 @@ async fn main() {
     // ┌──────────────────────────────────────────────────────────┐
     // │ COMPILE-TIME SAFETY: uncomment to see the error!        │
     // │                                                         │
-    // │ // Missing HasLogger — won't compile:                   │
+    // │ // Missing Logger — won't compile:                      │
     // │ // let bad = Layer::new()                               │
     // │ //     .with_repo(InMemoryTodoRepo::new())              │
     // │ //     .into_runtime();                                 │
     // │ // bad.run(&create_and_log("nope".into())).await;       │
-    // │ //         ^^^^^^^^^^^^^^^^ HasLogger not satisfied      │
+    // │ //         ^^^^^^^^^^^^^^^^ Logger not satisfied         │
     // └──────────────────────────────────────────────────────────┘
 
     // ── 2. Combinator style ─────────────────────────────
@@ -62,7 +62,7 @@ async fn main() {
 
     println!("── Do-Notation Style ───────────────────");
 
-    fn program_gen<R: HasRepo + HasLogger>() -> Effect<(), TodoError, R> {
+    fn program_gen<R: TodoRepo + Logger>() -> Effect<(), TodoError, R> {
         Effect::from_fn(|ctx: Arc<R>| async move {
             let t1 = create_and_log("Read a book".into())
                 .run(ctx.clone())
@@ -139,7 +139,7 @@ async fn main() {
 
     println!("── Parallel Composition ────────────────");
 
-    fn parallel_demo<R: HasRepo + HasLogger>() -> Effect<(), TodoError, R> {
+    fn parallel_demo<R: TodoRepo + Logger>() -> Effect<(), TodoError, R> {
         Effect::from_fn(|ctx: Arc<R>| async move {
             create_and_log("Task A".into())
                 .run(ctx.clone())

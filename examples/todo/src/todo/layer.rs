@@ -10,14 +10,14 @@
 //!     .with_logger(ConsoleLogger)          // Layer<WithLogger<WithRepo<()>>>
 //!     .into_runtime();                     // Runtime<WithLogger<WithRepo<()>>>
 //!
-//! // The context now satisfies HasRepo + HasLogger.
+//! // The context now satisfies TodoRepo + Logger.
 //! rt.run(&program()).await;
 //! ```
 
 use effect::Runtime;
 
 use super::repo::InMemoryTodoRepo;
-use super::traits::{HasLogger, HasRepo};
+use super::traits::{Logger, TodoRepo};
 
 // ── Concrete service implementations ────────────────────────
 
@@ -39,13 +39,13 @@ pub struct WithLogger<Inner> {
 
 // ── Direct trait impls ──────────────────────────────────────
 
-impl<I: Send + Sync + 'static> HasRepo for WithRepo<I> {
+impl<I: Send + Sync + 'static> TodoRepo for WithRepo<I> {
     fn repo(&self) -> &InMemoryTodoRepo {
         &self.repo
     }
 }
 
-impl<I: Send + Sync + 'static> HasLogger for WithLogger<I> {
+impl<I: Send + Sync + 'static> Logger for WithLogger<I> {
     fn log(&self, msg: &str) {
         println!("  [LOG] {msg}");
     }
@@ -55,13 +55,13 @@ impl<I: Send + Sync + 'static> HasLogger for WithLogger<I> {
 // Each wrapper forwards traits it doesn't directly provide,
 // so inner services stay accessible regardless of nesting order.
 
-impl<I: HasLogger + Send + Sync + 'static> HasLogger for WithRepo<I> {
+impl<I: Logger + Send + Sync + 'static> Logger for WithRepo<I> {
     fn log(&self, msg: &str) {
         self.inner.log(msg)
     }
 }
 
-impl<I: HasRepo + Send + Sync + 'static> HasRepo for WithLogger<I> {
+impl<I: TodoRepo + Send + Sync + 'static> TodoRepo for WithLogger<I> {
     fn repo(&self) -> &InMemoryTodoRepo {
         self.inner.repo()
     }
@@ -108,7 +108,7 @@ impl<Ctx> Layer<Ctx> {
     /// Convert into a `Runtime` for executing effects.
     ///
     /// This only compiles if `Ctx` satisfies all the trait bounds
-    /// your effects require (e.g. `HasRepo + HasLogger`).
+    /// your effects require (e.g. `TodoRepo + Logger`).
     pub fn into_runtime(self) -> Runtime<Ctx>
     where
         Ctx: Send + Sync + 'static,

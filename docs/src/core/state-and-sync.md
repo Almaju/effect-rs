@@ -1,12 +1,13 @@
 # State and Synchronization
 
-Three primitives for sharing state and coordinating across async tasks:
+Four primitives for sharing state and coordinating across async tasks:
 
 | Primitive          | Shape                                          | When to reach for it                                  |
 | ------------------ | ---------------------------------------------- | ----------------------------------------------------- |
 | [`Ref<A>`]         | A mutable cell.                                | Counters, caches, anywhere you'd reach for `Arc<Mutex<A>>`. |
 | [`Deferred<A, E>`] | A one-shot promise of an `Exit<A, E>`.         | "Compute once, await many times" — initialization, gate. |
 | [`Queue<A>`]       | MPMC async queue, bounded or unbounded.         | Fan-in / fan-out, work pipelines, back-pressured streams. |
+| [`Semaphore`]      | Counting semaphore.                             | Concurrency limits — "at most N of these at once".    |
 
 All three are cheap to `clone()` — clones share the same underlying
 state via `Arc`. Hand them to any number of tasks; operations are
@@ -200,9 +201,52 @@ assert_eq!(q.offer::<String, ()>(3).execute().await.ok(), Some(false));
 | `size()`            | `Effect<usize, E, R>`            | Buffered item count.                             |
 | `is_empty()`        | `Effect<bool, E, R>`             |                                                  |
 
+## `Semaphore` — bound concurrency
+
+A counting semaphore: at most *N* effects may hold a permit at once. The
+typical entry point is `with_permit`, which acquires, runs, and
+releases — automatically, even on failure.
+
+```rust,no_run
+use effect::{Effect, Semaphore};
+use std::time::Duration;
+
+# #[tokio::main] async fn main() {
+let sem = Semaphore::new(2);   // at most 2 concurrent calls
+
+let work = |i: i32| Effect::<i32, String, ()>::from_fn(move |_| async move {
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    Ok(i * 2)
+});
+
+// Launch 10 jobs but only 2 ever run concurrently.
+let mut handles = Vec::new();
+for i in 0..10 {
+    let sem = sem.clone();
+    let w = work(i);
+    handles.push(tokio::spawn(async move {
+        sem.with_permit(w).execute().await
+    }));
+}
+for h in handles { let _ = h.await.unwrap(); }
+# }
+```
+
+### Available ops
+
+| Method                  | Returns                          | Notes                                              |
+| ----------------------- | -------------------------------- | -------------------------------------------------- |
+| `available_permits()`   | `Effect<usize, E, R>`            |                                                    |
+| `try_acquire()`         | `Effect<bool, E, R>`             | Probe (releases immediately).                       |
+| `with_permit(eff)`      | `Effect<A, E, R>`                | Run `eff` holding one permit.                       |
+| `with_permits(n, eff)`  | `Effect<A, E, R>`                | Run `eff` holding `n` permits at once.              |
+| `close()`               | `Effect<(), E, R>`               | Subsequent acquires fail with `Cause::Die`.        |
+
+Permits are released on the way out — success, typed failure, or
+defect. There's no risk of leaking a permit by forgetting to release.
+
 ## What's coming
 
-- **Semaphore** — concurrency limit (wraps `tokio::sync::Semaphore`).
 - **PubSub** — broadcast with subscriber back-pressure.
 - **`scoped`-built primitives** — once `Scope` lands, queues and refs
   can be auto-shut-down at scope end.
@@ -211,3 +255,4 @@ assert_eq!(q.offer::<String, ()>(3).execute().await.ok(), Some(false));
   surrounding chain pins the types.
 
 [`async-channel`]: https://docs.rs/async-channel
+[`Semaphore`]: https://docs.rs/effect/latest/effect/sync/semaphore/struct.Semaphore.html

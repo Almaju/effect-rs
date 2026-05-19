@@ -21,7 +21,7 @@ examples/todo/
         ├── model.rs    — Todo, TodoId
         ├── error.rs    — TodoError
         ├── repo.rs     — InMemoryTodoRepo
-        ├── traits.rs   — HasRepo, HasLogger (the service tags)
+        ├── traits.rs   — TodoRepo, Logger (the service tags)
         ├── service.rs  — business logic, generic over R
         └── layer.rs    — typed context builder
 ```
@@ -48,11 +48,11 @@ A service is a trait. Bounding `R` by it declares the requirement.
 
 ```rust,ignore
 // traits.rs
-pub trait HasRepo: Send + Sync + 'static {
+pub trait TodoRepo: Send + Sync + 'static {
     fn repo(&self) -> &InMemoryTodoRepo;
 }
 
-pub trait HasLogger: Send + Sync + 'static {
+pub trait Logger: Send + Sync + 'static {
     fn log(&self, msg: &str);
 }
 ```
@@ -64,11 +64,11 @@ only the services it actually uses. Composition accumulates bounds:
 
 ```rust,ignore
 // service.rs
-pub fn create_todo<R: HasRepo>(title: String) -> Effect<Todo, TodoError, R> { … }
-pub fn log_action<R: HasLogger>(msg: String) -> Effect<(), TodoError, R> { … }
+pub fn create_todo<R: TodoRepo>(title: String) -> Effect<Todo, TodoError, R> { … }
+pub fn log_action<R: Logger>(msg: String) -> Effect<(), TodoError, R> { … }
 
 // Combined — needs *both* services. The compiler enforces it.
-pub fn create_and_log<R: HasRepo + HasLogger>(
+pub fn create_and_log<R: TodoRepo + Logger>(
     title: String,
 ) -> Effect<Todo, TodoError, R> {
     create_todo(title).flat_map(|t| {
@@ -95,7 +95,7 @@ runtime.run(&create_and_log("Buy groceries".into())).await?;
 Comment out `.with_logger()` and the compiler refuses:
 
 ```text
-error[E0277]: the trait bound `WithRepo<()>: HasLogger` is not satisfied
+error[E0277]: the trait bound `WithRepo<()>: Logger` is not satisfied
 ```
 
 That's the whole game — dependencies in the type.
@@ -117,7 +117,7 @@ create_and_log("Write Rust code".into())
 **Do-notation style** — `async` block + `?`:
 
 ```rust,ignore
-fn program_gen<R: HasRepo + HasLogger>() -> Effect<(), TodoError, R> {
+fn program_gen<R: TodoRepo + Logger>() -> Effect<(), TodoError, R> {
     Effect::from_fn(|ctx: Arc<R>| async move {
         let t1 = create_and_log("Read a book".into()).run(ctx.clone()).await?;
         let _  = create_and_log("Go for a walk".into()).run(ctx.clone()).await?;

@@ -8,7 +8,9 @@
 pub mod deferred;
 pub mod queue;
 pub mod reference;
+pub mod semaphore;
 
 pub use deferred::Deferred;
 pub use queue::Queue;
 pub use reference::Ref;
+pub use semaphore::Semaphore;

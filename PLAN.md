@@ -48,9 +48,9 @@ The repo already contains a credible Effect prototype:
 - `src/lib.rs` — `Effect<A, E, R>` with `succeed`, `fail`, `sync`, `from_fn`,
   `map`, `map_error`, `flat_map`, `tap`, `catch_all`, `or_else`, `zip`,
   `zip_with`, `provide`, `ask`, `Runtime`, `From<Result>`. 22 passing tests.
-- `src/todo/` — worked example showing trait-based DI (`HasRepo`,
-  `HasLogger`), layered context (`Layer::new().with_repo(..).with_logger()`),
-  business logic generic over `R: HasRepo + HasLogger`, compile-time
+- `src/todo/` — worked example showing trait-based DI (`TodoRepo`,
+  `Logger`), layered context (`Layer::new().with_repo(..).with_logger()`),
+  business logic generic over `R: TodoRepo + Logger`, compile-time
   enforcement of required services.
 - `src/main.rs` — demo of combinator style, do-notation style, error
   handling, parallel composition, and `.provide()`.
@@ -109,7 +109,7 @@ Effect's Schema is its crown jewel — one declaration, many uses. In Rust:
   where possible, trait objects otherwise.
 
 ### 3.5 Context / Layer
-Keep the current trait-based approach (`HasRepo + HasLogger`) — it
+Keep the current trait-based approach (`TodoRepo + Logger`) — it
 compile-time-checks dependencies, which is exactly what Effect-TS's
 `Context.Tag` system buys you. Add:
 - A `tag!` macro for boilerplate-free service declaration.

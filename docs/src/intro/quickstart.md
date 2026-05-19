@@ -85,16 +85,16 @@ edge:
 use effect::Effect;
 use std::sync::Arc;
 
-trait HasLogger: Send + Sync + 'static {
+trait Logger: Send + Sync + 'static {
     fn log(&self, msg: &str);
 }
 
 struct ConsoleLogger;
-impl HasLogger for ConsoleLogger {
+impl Logger for ConsoleLogger {
     fn log(&self, msg: &str) { println!("{msg}"); }
 }
 
-fn announce<R: HasLogger>(msg: String) -> Effect<(), String, R> {
+fn announce<R: Logger>(msg: String) -> Effect<(), String, R> {
     Effect::from_fn(move |ctx: Arc<R>| {
         let msg = msg.clone();
         async move {

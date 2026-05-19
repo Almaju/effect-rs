@@ -7,10 +7,12 @@
 //! - Requires an environment of type `R` to execute
 
 pub mod exit;
+pub mod schedule;
 pub mod sync;
 
 pub use exit::{Cause, Defect, Exit};
-pub use sync::{Deferred, Queue, Ref};
+pub use schedule::{Schedule, ScheduleStep};
+pub use sync::{Deferred, Queue, Ref, Semaphore};
 
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -473,6 +475,91 @@ where
     }
 }
 
+// ── Retry / Repeat ────────────────────────────────────────────
+
+impl<A, E, R> Effect<A, E, R>
+where
+    A: Send + 'static,
+    E: Send + 'static,
+    R: Send + Sync + 'static,
+{
+    /// Retry this effect on typed failure (`Cause::Fail`) according to
+    /// the schedule. Defects and interruption are not retried — they
+    /// surface immediately.
+    ///
+    /// On success, returns the value. When the schedule says `Done`,
+    /// returns the last failure.
+    pub fn retry(self, schedule: Schedule) -> Effect<A, E, R> {
+        let run_fn = self.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                let mut sched = schedule.clone();
+                Box::pin(async move {
+                    loop {
+                        let exit = run(r.clone()).await;
+                        match exit {
+                            Exit::Success(_) => return exit,
+                            Exit::Failure(Cause::Fail(_)) => match sched.step() {
+                                ScheduleStep::Done => return exit,
+                                ScheduleStep::Continue(delay, next) => {
+                                    sched = next;
+                                    if !delay.is_zero() {
+                                        tokio::time::sleep(delay).await;
+                                    }
+                                }
+                            },
+                            // Defects, interruption, and compound causes
+                            // bypass retry entirely.
+                            _ => return exit,
+                        }
+                    }
+                })
+            }),
+        }
+    }
+
+    /// Repeat this effect on success according to the schedule. Returns
+    /// the value from the **last** successful iteration.
+    ///
+    /// If any iteration fails (typed, defect, or interruption), the
+    /// failure is returned immediately and the schedule is abandoned.
+    pub fn repeat(self, schedule: Schedule) -> Effect<A, E, R>
+    where
+        A: Clone,
+    {
+        let run_fn = self.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                let mut sched = schedule.clone();
+                Box::pin(async move {
+                    // First iteration is unconditional.
+                    let mut last = match run(r.clone()).await {
+                        Exit::Success(a) => a,
+                        other => return other,
+                    };
+                    loop {
+                        match sched.step() {
+                            ScheduleStep::Done => return Exit::Success(last),
+                            ScheduleStep::Continue(delay, next) => {
+                                sched = next;
+                                if !delay.is_zero() {
+                                    tokio::time::sleep(delay).await;
+                                }
+                                match run(r.clone()).await {
+                                    Exit::Success(a) => last = a,
+                                    other => return other,
+                                }
+                            }
+                        }
+                    }
+                })
+            }),
+        }
+    }
+}
+
 // ── Environment ───────────────────────────────────────────────
 
 impl<A, E, R> Effect<A, E, R>
@@ -682,6 +769,100 @@ mod tests {
             Err::<i32, _>("boom".to_string())
         });
         assert_eq!(program.execute().await.err(), Some("boom".to_string()));
+    }
+
+    // ── Retry / Repeat ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn retry_recovers_after_n_failures() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_inner = attempts.clone();
+        let effect = Effect::<i32, String, ()>::sync(move || {
+            let n = attempts_inner.fetch_add(1, Ordering::SeqCst) + 1;
+            if n < 3 { Err("not yet".to_string()) } else { Ok(42) }
+        });
+        let exit = effect.retry(Schedule::recurs(5)).execute().await;
+        assert_eq!(exit.ok(), Some(42));
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn retry_gives_up_when_schedule_exhausts() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_inner = attempts.clone();
+        let effect = Effect::<i32, String, ()>::sync(move || {
+            attempts_inner.fetch_add(1, Ordering::SeqCst);
+            Err("always".to_string())
+        });
+        let exit = effect.retry(Schedule::recurs(2)).execute().await;
+        assert_eq!(exit.err(), Some("always".to_string()));
+        // 1 initial + 2 retries
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn retry_does_not_retry_defects() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_inner = attempts.clone();
+        let effect = Effect::<i32, String, ()>::sync(move || {
+            attempts_inner.fetch_add(1, Ordering::SeqCst);
+            panic!("bug");
+        });
+        let exit = effect.retry(Schedule::recurs(5)).execute().await;
+        assert!(matches!(exit, Exit::Failure(Cause::Die(_))));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn repeat_runs_n_plus_one_times() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_inner = count.clone();
+        let effect = Effect::<i32, String, ()>::sync(move || {
+            let n = count_inner.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(n as i32)
+        });
+        let exit = effect.repeat(Schedule::recurs(3)).execute().await;
+        // initial + 3 repeats = 4 runs; last returned value is 4.
+        assert_eq!(exit.ok(), Some(4));
+        assert_eq!(count.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn repeat_stops_at_first_failure() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_inner = count.clone();
+        let effect = Effect::<i32, String, ()>::sync(move || {
+            let n = count_inner.fetch_add(1, Ordering::SeqCst) + 1;
+            if n == 3 { Err("third".to_string()) } else { Ok(n as i32) }
+        });
+        let exit = effect.repeat(Schedule::recurs(10)).execute().await;
+        assert_eq!(exit.err(), Some("third".to_string()));
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn retry_observes_schedule_delays() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::{Duration, Instant};
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_inner = attempts.clone();
+        let effect = Effect::<i32, String, ()>::sync(move || {
+            let n = attempts_inner.fetch_add(1, Ordering::SeqCst) + 1;
+            if n < 3 { Err("nope".to_string()) } else { Ok(0) }
+        });
+        let start = Instant::now();
+        effect
+            .retry(Schedule::spaced(Duration::from_millis(20)).max_attempts(5))
+            .execute()
+            .await;
+        let elapsed = start.elapsed();
+        // 2 retries × 20ms ≥ 40ms (allow scheduling slack).
+        assert!(elapsed >= Duration::from_millis(35), "elapsed {elapsed:?}");
     }
 
     // ── Environment ────────────────────────────────────────
