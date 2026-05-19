@@ -1,7 +1,6 @@
 mod todo;
 
 use effect::{Cause, Effect, Exit};
-use std::sync::Arc;
 use todo::*;
 
 #[tokio::main]
@@ -55,38 +54,28 @@ async fn main() {
 
     report(runtime.run(&program).await);
 
-    // ── 3. Do-notation style (from_fn + ?) ──────────────
+    // ── 3. Do-notation style (Effect::block) ────────────
     // Like Effect.gen(function*() { yield* ... }) in Effect-TS.
-    // `Exit::into_typed_result()?` is the per-step plumbing — the
-    // upcoming `eff!` macro will hide it.
+    // `g.run(eff).await?` threads context and short-circuits on failure.
 
     println!("── Do-Notation Style ───────────────────");
 
     fn program_gen<R: TodoRepo + Logger>() -> Effect<(), TodoError, R> {
-        Effect::from_fn(|ctx: Arc<R>| async move {
-            let t1 = create_and_log("Read a book".into())
-                .run(ctx.clone())
-                .await
-                .into_typed_result()?;
-            let _t2 = create_and_log("Go for a walk".into())
-                .run(ctx.clone())
-                .await
-                .into_typed_result()?;
-            let t3 = create_and_log("Cook dinner".into())
-                .run(ctx.clone())
-                .await
-                .into_typed_result()?;
+        Effect::block(|g| async move {
+            let t1 = g.run(create_and_log("Read a book".into())).await?;
+            let _t2 = g.run(create_and_log("Go for a walk".into())).await?;
+            let t3 = g.run(create_and_log("Cook dinner".into())).await?;
 
-            complete_todo(t1.id).run(ctx.clone()).await.into_typed_result()?;
-            complete_todo(t3.id).run(ctx.clone()).await.into_typed_result()?;
+            g.run(complete_todo(t1.id)).await?;
+            g.run(complete_todo(t3.id)).await?;
 
-            let todos = list_todos().run(ctx.clone()).await.into_typed_result()?;
+            let todos = g.run(list_todos()).await?;
             println!("\n  📋 Todo List:");
             for todo in &todos {
                 println!("    {todo}");
             }
 
-            let s = todo_summary().run(ctx).await.into_typed_result()?;
+            let s = g.run(todo_summary()).await?;
             println!("\n  📊 {s}");
             Ok(())
         })
@@ -140,32 +129,20 @@ async fn main() {
     println!("── Parallel Composition ────────────────");
 
     fn parallel_demo<R: TodoRepo + Logger>() -> Effect<(), TodoError, R> {
-        Effect::from_fn(|ctx: Arc<R>| async move {
-            create_and_log("Task A".into())
-                .run(ctx.clone())
-                .await
-                .into_typed_result()?;
-            create_and_log("Task B".into())
-                .run(ctx.clone())
-                .await
-                .into_typed_result()?;
+        Effect::block(|g| async move {
+            g.run(create_and_log("Task A".into())).await?;
+            g.run(create_and_log("Task B".into())).await?;
 
             // zip runs both concurrently via tokio::join!
-            let (a, b) = get_todo(1)
-                .zip(get_todo(2))
-                .run(ctx.clone())
-                .await
-                .into_typed_result()?;
+            let (a, b) = g.run(get_todo(1).zip(get_todo(2))).await?;
             println!("  Concurrent: {a}  &  {b}");
 
             // zip_with combines results
-            let msg = get_todo(1)
-                .zip_with(todo_summary(), |todo, summary| {
+            let msg = g
+                .run(get_todo(1).zip_with(todo_summary(), |todo, summary| {
                     format!("'{}' — overall {}", todo.title, summary)
-                })
-                .run(ctx)
-                .await
-                .into_typed_result()?;
+                }))
+                .await?;
             println!("  Combined:   {msg}");
             Ok(())
         })

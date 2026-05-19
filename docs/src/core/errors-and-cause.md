@@ -160,18 +160,18 @@ exit.into_typed_result();           // Result<A, E>  — panics on Die/Interrupt
 # }
 ```
 
-`into_typed_result()` is the convenience for `async` blocks that use `?`:
+`into_typed_result()` is what `Effect::block` calls under the hood; you
+only need it when writing your own `from_fn` closures.
+
+The recommended do-notation form is `Effect::block`:
 
 ```rust,no_run
 use effect::Effect;
-use std::sync::Arc;
 
 # #[tokio::main] async fn main() {
-let program: Effect<i32, String, ()> = Effect::from_fn(|ctx: Arc<()>| async move {
-    let a = Effect::<i32, String, ()>::succeed(10)
-        .run(ctx.clone()).await.into_typed_result()?;
-    let b = Effect::<i32, String, ()>::succeed(32)
-        .run(ctx).await.into_typed_result()?;
+let program: Effect<i32, String, ()> = Effect::block(|g| async move {
+    let a = g.run(Effect::<i32, String, ()>::succeed(10)).await?;
+    let b = g.run(Effect::<i32, String, ()>::succeed(32)).await?;
     Ok(a + b)
 });
 
@@ -179,7 +179,10 @@ assert_eq!(program.execute().await.ok(), Some(42));
 # }
 ```
 
-The boilerplate goes away once the `eff!` macro lands (Phase 1b).
+`g.run(eff).await?` runs the inner effect with the captured context and
+propagates `Cause::Fail` through `?`. Defects (`Die`) and interruption
+**panic** at the `g.run` call — for those, use `g.run_exit(eff).await`
+and pattern-match on the [`Exit`].
 
 ## What's coming next
 

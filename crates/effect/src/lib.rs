@@ -14,6 +14,9 @@ pub use exit::{Cause, Defect, Exit};
 pub use schedule::{Schedule, ScheduleStep};
 pub use sync::{Deferred, Queue, Ref, Semaphore};
 
+// Block is defined alongside Effect below; re-exported via the prelude pattern
+// once we have one. For now, `effect::Block<R>` is reachable directly.
+
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
@@ -81,6 +84,76 @@ where
         }
     }
 
+    /// Build an effect from an async closure that receives a [`Gen`]
+    /// helper — the do-notation equivalent. Inside the closure, run
+    /// inner effects with `g.run(eff).await?` instead of the verbose
+    /// `eff.run(ctx.clone()).await.into_typed_result()?` chain.
+    ///
+    /// ```ignore
+    /// Effect::block(|g| async move {
+    ///     let a = g.run(some_eff()).await?;
+    ///     let b = g.run(other_eff()).await?;
+    ///     Ok(a + b)
+    /// })
+    /// ```
+    ///
+    /// Like [`Effect::from_fn`], the closure returns a `Result<A, E>`
+    /// which is lifted into `Cause::Fail` on `Err`. Inner effects whose
+    /// run produces a defect or interruption will **panic** at the
+    /// `g.run(...)` call — use `g.run_exit(...)` if you need to inspect
+    /// the full cause without panicking.
+    pub fn block<F, Fut>(f: F) -> Self
+    where
+        F: Fn(Block<R>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<A, E>> + Send + 'static,
+    {
+        Effect::from_fn(move |ctx: Arc<R>| {
+            let g = Block { ctx };
+            f(g)
+        })
+    }
+}
+
+/// Helper passed to [`Effect::block`] for running inner effects against
+/// the captured environment.
+pub struct Block<R> {
+    ctx: Arc<R>,
+}
+
+impl<R: Send + Sync + 'static> Block<R> {
+    /// Run an inner effect, extracting a typed `Result`. Panics on
+    /// defects or interruption — use [`Block::run_exit`] to handle them
+    /// explicitly.
+    pub async fn run<A, E>(&self, eff: Effect<A, E, R>) -> Result<A, E>
+    where
+        A: Send + 'static,
+        E: std::fmt::Debug + Send + 'static,
+    {
+        eff.run(self.ctx.clone()).await.into_typed_result()
+    }
+
+    /// Run an inner effect and return the full [`Exit`] without any
+    /// conversion.
+    pub async fn run_exit<A, E>(&self, eff: Effect<A, E, R>) -> Exit<A, E>
+    where
+        A: Send + 'static,
+        E: Send + 'static,
+    {
+        eff.run(self.ctx.clone()).await
+    }
+
+    /// Borrow the current environment.
+    pub fn context(&self) -> Arc<R> {
+        self.ctx.clone()
+    }
+}
+
+impl<A, E, R> Effect<A, E, R>
+where
+    A: Send + 'static,
+    E: Send + 'static,
+    R: Send + Sync + 'static,
+{
     /// An effect that immediately succeeds with the given value.
     pub fn succeed(value: A) -> Self
     where
@@ -769,6 +842,54 @@ mod tests {
             Err::<i32, _>("boom".to_string())
         });
         assert_eq!(program.execute().await.err(), Some("boom".to_string()));
+    }
+
+    // ── gen / do-notation ─────────────────────────────────
+
+    #[tokio::test]
+    async fn gen_threads_two_effects() {
+        let program = Effect::<i32, String, ()>::block(|g| async move {
+            let a = g.run(Effect::<_, String, ()>::succeed(20)).await?;
+            let b = g.run(Effect::<_, String, ()>::succeed(22)).await?;
+            Ok(a + b)
+        });
+        assert_eq!(program.execute().await.ok(), Some(42));
+    }
+
+    #[tokio::test]
+    async fn gen_short_circuits_on_failure() {
+        let program = Effect::<i32, String, ()>::block(|g| async move {
+            let _ = g.run(Effect::<i32, String, ()>::fail("boom".into())).await?;
+            let _ = g.run(Effect::<i32, String, ()>::succeed(42)).await?;
+            Ok(0)
+        });
+        assert_eq!(program.execute().await.err(), Some("boom".to_string()));
+    }
+
+    #[tokio::test]
+    async fn gen_threads_context() {
+        struct Config { value: i32 }
+        let leaf = Effect::<i32, String, Config>::from_fn(|ctx| async move { Ok(ctx.value * 2) });
+        let program = Effect::<i32, String, Config>::block(move |g| {
+            let leaf = leaf.clone();
+            async move { g.run(leaf).await }
+        });
+        assert_eq!(
+            program.run_with(Config { value: 21 }).await.ok(),
+            Some(42)
+        );
+    }
+
+    #[tokio::test]
+    async fn gen_run_exit_surfaces_die() {
+        let program = Effect::<i32, String, ()>::block(|g| async move {
+            let exit = g.run_exit(Effect::<i32, String, ()>::die_message("bug")).await;
+            match exit {
+                Exit::Failure(Cause::Die(_)) => Ok(-1),
+                _ => Ok(0),
+            }
+        });
+        assert_eq!(program.execute().await.ok(), Some(-1));
     }
 
     // ── Retry / Repeat ─────────────────────────────────────

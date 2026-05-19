@@ -114,27 +114,28 @@ create_and_log("Write Rust code".into())
     .flat_map(|_| todo_summary())
 ```
 
-**Do-notation style** — `async` block + `?`:
+**Do-notation style** — `Effect::block` hides the context-threading:
 
 ```rust,ignore
 fn program_gen<R: TodoRepo + Logger>() -> Effect<(), TodoError, R> {
-    Effect::from_fn(|ctx: Arc<R>| async move {
-        let t1 = create_and_log("Read a book".into()).run(ctx.clone()).await?;
-        let _  = create_and_log("Go for a walk".into()).run(ctx.clone()).await?;
-        let t3 = create_and_log("Cook dinner".into()).run(ctx.clone()).await?;
+    Effect::block(|g| async move {
+        let t1 = g.run(create_and_log("Read a book".into())).await?;
+        let _  = g.run(create_and_log("Go for a walk".into())).await?;
+        let t3 = g.run(create_and_log("Cook dinner".into())).await?;
 
-        complete_todo(t1.id).run(ctx.clone()).await?;
-        complete_todo(t3.id).run(ctx.clone()).await?;
+        g.run(complete_todo(t1.id)).await?;
+        g.run(complete_todo(t3.id)).await?;
 
-        let todos = list_todos().run(ctx.clone()).await?;
+        let todos = g.run(list_todos()).await?;
         for todo in &todos { println!("  {todo}"); }
         Ok(())
     })
 }
 ```
 
-The Phase 1 `eff!` macro will let you drop the `.run(ctx.clone()).await?`
-boilerplate.
+`g.run(eff).await?` threads context and short-circuits on
+`Cause::Fail`. For comparison, the same code on raw `from_fn` would
+need `eff.run(ctx.clone()).await.into_typed_result()?` at every step.
 
 ## 6. Error handling
 

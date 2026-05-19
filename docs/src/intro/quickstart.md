@@ -33,13 +33,12 @@ Effect<A, E, R>
 `execute()` is only available when `R = ()` — meaning no environment is
 required. For effects that need services, use `Runtime`.
 
-## 2. Sequencing with `flat_map` (or `?`)
+## 2. Sequencing with `flat_map` or `Effect::block`
 
 Two effects, each may fail:
 
 ```rust,no_run
 use effect::Effect;
-use std::sync::Arc;
 
 fn parse(s: &str) -> Effect<i32, String, ()> {
     let s = s.to_owned();
@@ -53,15 +52,25 @@ fn double(x: i32) -> Effect<i32, String, ()> {
 // Combinator style
 let combined = parse("21").flat_map(double);
 
-// Do-notation style — async + `?` for short-circuiting
-let do_style: Effect<i32, String, ()> = Effect::from_fn(|ctx: Arc<()>| async move {
-    let parsed = parse("21").run(ctx.clone()).await?;
-    let doubled = double(parsed).run(ctx).await?;
+// Do-notation style — Effect::block + `?` for short-circuiting.
+// `g.run(eff).await?` runs the inner effect with the captured ctx and
+// propagates Cause::Fail through `?`.
+let do_style: Effect<i32, String, ()> = Effect::block(|g| async move {
+    let parsed  = g.run(parse("21")).await?;
+    let doubled = g.run(double(parsed)).await?;
     Ok(doubled)
 });
 ```
 
-Both produce `Effect<i32, String, ()>`. Pick the one that reads best.
+Both produce `Effect<i32, String, ()>`. Pick the one that reads best:
+
+- **Combinator chains** are tight when the work is linear.
+- **`Effect::block`** is the standard for branching logic, multiple
+  bindings, and anything you'd write as an `async fn`.
+
+> `Effect::block` is named to avoid clashing with Rust 2024's reserved
+> `gen` keyword. Effect-TS users will recognize it as the moral
+> equivalent of `Effect.gen`.
 
 ## 3. Recovering from errors
 
