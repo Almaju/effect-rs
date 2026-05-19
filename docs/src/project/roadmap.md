@@ -10,8 +10,8 @@ A short summary of the phases:
 | Phase | Theme                            | Headline deliverable                                   |
 | ----- | -------------------------------- | ------------------------------------------------------ |
 | 0     | Prototype (done)                 | `Effect<A,E,R>`, trait-based Layer, todo example.      |
-| 1     | Foundations                      | Stack-safe interpreter; `Cause`/`Exit`; `Scope`; fibers; `Schedule`; `Ref`/`Queue`/`PubSub`; `effect-macros`; `effect-test`. |
-| 2     | Data + Schema                    | `Chunk`/`HashMap`/`HashSet`; typeclass families; `#[derive(Schema)]`; `Newtype`/`Brand`. |
+| 1     | Foundations (partial — see below) | `Cause`/`Exit`; `Schedule`/retry/repeat; `Ref`/`Deferred`/`Queue`/`Semaphore`; `Effect::block` do-notation; `effect-macros`. **Still pending:** interpreter rewrite, `Scope`, `Fiber`, `race`/`fork`/structured interruption, `effect-test`. |
+| 2     | **Data + Schema (done)**          | `Chunk`/`HashMap`/`HashSet`; typeclass families; `#[derive(Schema)]` + `#[derive(Newtype)]` + `#[derive(Brand)]`; primitives + container Schema impls; Schema → JSON Schema export. |
 | 3     | Streams, STM, Config             | `Stream`/`Sink`/`Channel`; `Tx*`; declarative config.   |
 | 4     | Observability + Platform         | Logger on `tracing`; Metrics; OTel; FS/Terminal/Stdio. |
 | 5     | CLI + Printer                    | `effect-printer`; `effect-cli`.                        |

@@ -3,6 +3,10 @@
 use effect::Schema;
 use effect::schema::serde_json::json;
 
+// Sanity: the derive references `::effect::schema::*` paths, so this
+// test crate (which only declares `effect` as a dep) resolves them
+// through the re-export.
+
 #[derive(Debug, PartialEq, Schema)]
 pub struct User {
     pub name: String,

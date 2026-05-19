@@ -1,6 +1,7 @@
 mod todo;
 
-use effect::{Cause, Effect, Exit};
+use effect::schema::serde_json;
+use effect::{Cause, Effect, Exit, Schema};
 use todo::*;
 
 #[tokio::main]
@@ -172,6 +173,42 @@ async fn main() {
         Exit::Success(msg) => println!("{msg}"),
         Exit::Failure(c) => eprintln!("  ❌ {c}"),
     }
+    println!("  ✨ Done\n");
+
+    // ── 7. Schema — JSON in / out / spec ────────────────
+    // #[derive(Schema)] on Todo and TodoId gives parse_json,
+    // encode_json, and json_schema in one declaration. TodoId is a
+    // single-field tuple struct, so it encodes transparently as u64.
+
+    println!("── Schema (JSON I/O) ───────────────────");
+
+    let sample = Todo {
+        id: TodoId::new(7),
+        title: "Demo schema".into(),
+        completed: true,
+    };
+
+    let encoded = sample.encode_json();
+    println!("  Encoded:   {encoded}");
+
+    let parsed = Todo::parse_json(&encoded).unwrap();
+    println!("  Parsed:    {parsed:?}");
+    assert_eq!(parsed.id, sample.id);
+    assert_eq!(parsed.title, sample.title);
+    assert_eq!(parsed.completed, sample.completed);
+
+    let spec = Todo::json_schema();
+    println!(
+        "  JSON Schema:\n{}",
+        serde_json::to_string_pretty(&spec).unwrap()
+    );
+
+    let bad = serde_json::json!({ "id": 1, "title": 42, "completed": true });
+    match Todo::parse_json(&bad) {
+        Ok(_)  => unreachable!(),
+        Err(e) => println!("  Path err:  {e}"),
+    }
+
     println!("  ✨ Done");
 }
 

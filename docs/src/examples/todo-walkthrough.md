@@ -180,11 +180,55 @@ standalone.execute().await?;
 needed services — useful when handing an effect to code that has no
 opinions about your context.
 
+## 9. JSON in / out / spec via `#[derive(Schema)]`
+
+The domain types derive [`Schema`](../data/schemas.md) — one
+declaration that powers parse, encode, and JSON Schema introspection:
+
+```rust,ignore
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Newtype, Schema)]
+pub struct TodoId(u64);          // transparent — encodes as u64
+
+#[derive(Debug, Clone, Schema)]
+pub struct Todo {
+    pub id: TodoId,
+    pub title: String,
+    pub completed: bool,
+}
+```
+
+The example demo (`cargo run -p effect-example-todo`):
+
+```text
+── Schema (JSON I/O) ───────────────────
+  Encoded:   {"completed":true,"id":7,"title":"Demo schema"}
+  Parsed:    Todo { id: TodoId(7), title: "Demo schema", completed: true }
+  JSON Schema:
+{
+  "properties": {
+    "completed": { "type": "boolean" },
+    "id":        { "type": "integer", "format": "uint64", "minimum": 0 },
+    "title":     { "type": "string" }
+  },
+  "required": ["id", "title", "completed"],
+  "type": "object"
+}
+  Path err:  at field 'title': type mismatch: expected string, got number
+```
+
+The path-attached errors come for free from the derive — `at field
+'title': type mismatch: expected string, got number`. Wrapper
+newtypes like `TodoId` encode transparently as their inner type, so
+the JSON stays human-friendly.
+
 ## Where this evolves
 
-Once Phase 1 lands the example will be updated to use:
+Phase 1 introduced typed Cause, the do-notation `Effect::block`, the
+concurrency primitives, retries, and the semaphore. Phase 2 added
+schemas, newtypes, brands, typeclasses, and the persistent
+collections. Still to come:
 
-- `Cause`/`Exit` (with `.sandbox()` showing the inspectable form),
-- a `Scope` for the repo (so a real DB connection could replace the
+- a `Scope` for the repo (so a real DB connection can replace the
   in-memory store with no service-level changes),
-- a small `effect-test` harness swapping `InMemoryTodoRepo` for a fake.
+- a small `effect-test` harness swapping `InMemoryTodoRepo` for a fake,
+- streams, transactional memory, and a typed HTTP/RPC layer.

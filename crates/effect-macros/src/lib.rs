@@ -202,10 +202,38 @@ fn expand_schema(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             "#[derive(Schema)] supports structs only (enums and unions are TODO)",
         ));
     };
+
+    // Single-field tuple struct: emit a transparent Schema delegating to
+    // the inner type.
+    if let Fields::Unnamed(unnamed) = &s.fields {
+        if unnamed.unnamed.len() == 1 {
+            let inner = &unnamed.unnamed[0].ty;
+            return Ok(quote::quote! {
+                impl ::effect::schema::Schema for #name {
+                    fn parse_json(
+                        __input: &::effect::schema::serde_json::Value,
+                    ) -> ::core::result::Result<Self, ::effect::schema::SchemaError> {
+                        <#inner as ::effect::schema::Schema>::parse_json(__input).map(Self)
+                    }
+                    fn encode_json(&self) -> ::effect::schema::serde_json::Value {
+                        <#inner as ::effect::schema::Schema>::encode_json(&self.0)
+                    }
+                    fn json_schema() -> ::effect::schema::serde_json::Value {
+                        <#inner as ::effect::schema::Schema>::json_schema()
+                    }
+                }
+            });
+        }
+        return Err(syn::Error::new_spanned(
+            input,
+            "#[derive(Schema)] on tuple structs requires exactly one field (transparent wrapper)",
+        ));
+    }
+
     let Fields::Named(fields) = &s.fields else {
         return Err(syn::Error::new_spanned(
             input,
-            "#[derive(Schema)] requires a struct with named fields",
+            "#[derive(Schema)] requires a named-field struct or a single-field tuple struct",
         ));
     };
 
@@ -227,8 +255,8 @@ fn expand_schema(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             parse_arms.push(quote::quote! {
                 #ident: match __obj.get(#name_str) {
                     ::core::option::Option::Some(__v) => {
-                        <#ty as ::effect_schema::Schema>::parse_json(__v)
-                            .map_err(|__e| ::effect_schema::SchemaError::at_field(#name_str, __e))?
+                        <#ty as ::effect::schema::Schema>::parse_json(__v)
+                            .map_err(|__e| ::effect::schema::SchemaError::at_field(#name_str, __e))?
                     }
                     ::core::option::Option::None => ::core::option::Option::None,
                 },
@@ -237,61 +265,61 @@ fn expand_schema(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             parse_arms.push(quote::quote! {
                 #ident: {
                     let __v = __obj.get(#name_str).ok_or_else(
-                        || ::effect_schema::SchemaError::missing_field(#name_str)
+                        || ::effect::schema::SchemaError::missing_field(#name_str)
                     )?;
-                    <#ty as ::effect_schema::Schema>::parse_json(__v)
-                        .map_err(|__e| ::effect_schema::SchemaError::at_field(#name_str, __e))?
+                    <#ty as ::effect::schema::Schema>::parse_json(__v)
+                        .map_err(|__e| ::effect::schema::SchemaError::at_field(#name_str, __e))?
                 },
             });
             required_lits.push(quote::quote! {
-                ::effect_schema::serde_json::Value::String(#name_str.to_string())
+                ::effect::schema::serde_json::Value::String(#name_str.to_string())
             });
         }
 
         encode_inserts.push(quote::quote! {
             __obj.insert(
                 #name_str.to_string(),
-                <#ty as ::effect_schema::Schema>::encode_json(&self.#ident),
+                <#ty as ::effect::schema::Schema>::encode_json(&self.#ident),
             );
         });
 
         property_inserts.push(quote::quote! {
             __props.insert(
                 #name_str.to_string(),
-                <#ty as ::effect_schema::Schema>::json_schema(),
+                <#ty as ::effect::schema::Schema>::json_schema(),
             );
         });
     }
 
     Ok(quote::quote! {
-        impl ::effect_schema::Schema for #name {
+        impl ::effect::schema::Schema for #name {
             fn parse_json(
-                __input: &::effect_schema::serde_json::Value,
-            ) -> ::core::result::Result<Self, ::effect_schema::SchemaError> {
+                __input: &::effect::schema::serde_json::Value,
+            ) -> ::core::result::Result<Self, ::effect::schema::SchemaError> {
                 let __obj = __input.as_object().ok_or_else(
-                    || ::effect_schema::SchemaError::type_mismatch("object", __input)
+                    || ::effect::schema::SchemaError::type_mismatch("object", __input)
                 )?;
                 ::core::result::Result::Ok(Self {
                     #(#parse_arms)*
                 })
             }
 
-            fn encode_json(&self) -> ::effect_schema::serde_json::Value {
-                let mut __obj = ::effect_schema::serde_json::Map::new();
+            fn encode_json(&self) -> ::effect::schema::serde_json::Value {
+                let mut __obj = ::effect::schema::serde_json::Map::new();
                 #(#encode_inserts)*
-                ::effect_schema::serde_json::Value::Object(__obj)
+                ::effect::schema::serde_json::Value::Object(__obj)
             }
 
-            fn json_schema() -> ::effect_schema::serde_json::Value {
-                let mut __props = ::effect_schema::serde_json::Map::new();
+            fn json_schema() -> ::effect::schema::serde_json::Value {
+                let mut __props = ::effect::schema::serde_json::Map::new();
                 #(#property_inserts)*
-                ::effect_schema::serde_json::Value::Object({
-                    let mut __spec = ::effect_schema::serde_json::Map::new();
-                    __spec.insert("type".to_string(), ::effect_schema::serde_json::Value::String("object".to_string()));
-                    __spec.insert("properties".to_string(), ::effect_schema::serde_json::Value::Object(__props));
+                ::effect::schema::serde_json::Value::Object({
+                    let mut __spec = ::effect::schema::serde_json::Map::new();
+                    __spec.insert("type".to_string(), ::effect::schema::serde_json::Value::String("object".to_string()));
+                    __spec.insert("properties".to_string(), ::effect::schema::serde_json::Value::Object(__props));
                     __spec.insert(
                         "required".to_string(),
-                        ::effect_schema::serde_json::Value::Array(vec![#(#required_lits),*]),
+                        ::effect::schema::serde_json::Value::Array(vec![#(#required_lits),*]),
                     );
                     __spec
                 })
