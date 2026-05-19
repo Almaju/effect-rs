@@ -7,7 +7,7 @@ use super::model::{Todo, TodoId};
 /// In-memory todo repository — a simple HashMap behind a Mutex.
 pub struct InMemoryTodoRepo {
     todos: Mutex<HashMap<TodoId, Todo>>,
-    next_id: Mutex<TodoId>,
+    next_id: Mutex<u64>,
 }
 
 impl InMemoryTodoRepo {
@@ -32,7 +32,7 @@ impl InMemoryTodoRepo {
 
     pub fn create(&self, title: String) -> Result<Todo, TodoError> {
         let mut next_id = self.next_id.lock().unwrap();
-        let id = *next_id;
+        let id = TodoId::new(*next_id);
         *next_id += 1;
 
         let todo = Todo {

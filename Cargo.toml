@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/effect",
+    "crates/effect-macros",
     "examples/todo",
 ]
 
@@ -16,3 +17,4 @@ repository = "https://github.com/Almaju/effect-rs"
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "sync", "time"] }
 async-channel = "2"
 effect = { path = "crates/effect", version = "0.0.1" }
+effect-macros = { path = "crates/effect-macros", version = "0.0.1" }

@@ -1,6 +1,18 @@
 use std::fmt;
 
-pub type TodoId = u64;
+use effect::Newtype;
+
+/// A typed todo identifier. Distinct from any other `u64` at the type
+/// level — you can't pass an arbitrary integer where a `TodoId` is
+/// expected without an explicit `.into()` or `TodoId::new(...)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Newtype)]
+pub struct TodoId(u64);
+
+impl fmt::Display for TodoId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Todo {

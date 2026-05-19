@@ -18,6 +18,10 @@
 - [Scopes and Resources](./core/scopes-and-resources.md)
 - [Concurrency](./core/concurrency.md)
 
+# Data
+
+- [Newtypes and Brands](./data/newtypes.md)
+
 # Examples
 
 - [Todo Walkthrough](./examples/todo-walkthrough.md)

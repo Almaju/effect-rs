@@ -105,15 +105,15 @@ async fn main() {
     println!("  Validation:  {:?}", runtime.run(&validated).await);
 
     // Not found → or_else provides a fallback
-    let fallback = get_todo(999).or_else(Effect::succeed(Todo {
-        id: 0,
+    let fallback = get_todo(TodoId::new(999)).or_else(Effect::succeed(Todo {
+        id: TodoId::new(0),
         title: "default todo".into(),
         completed: false,
     }));
     println!("  Fallback:    {:?}", runtime.run(&fallback).await);
 
     // map_error to wrap domain errors
-    let mapped = get_todo(999).map_error(|e| format!("App error: {e}"));
+    let mapped = get_todo(TodoId::new(999)).map_error(|e| format!("App error: {e}"));
     println!("  map_error:   {:?}", runtime.run(&mapped).await);
 
     // catch_all_cause recovers from defects (Die) too
@@ -134,12 +134,12 @@ async fn main() {
             g.run(create_and_log("Task B".into())).await?;
 
             // zip runs both concurrently via tokio::join!
-            let (a, b) = g.run(get_todo(1).zip(get_todo(2))).await?;
+            let (a, b) = g.run(get_todo(TodoId::new(1)).zip(get_todo(TodoId::new(2)))).await?;
             println!("  Concurrent: {a}  &  {b}");
 
             // zip_with combines results
             let msg = g
-                .run(get_todo(1).zip_with(todo_summary(), |todo, summary| {
+                .run(get_todo(TodoId::new(1)).zip_with(todo_summary(), |todo, summary| {
                     format!("'{}' — overall {}", todo.title, summary)
                 }))
                 .await?;

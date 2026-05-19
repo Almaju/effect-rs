@@ -1,0 +1,17 @@
+[package]
+name = "effect-macros"
+version = "0.0.1"
+description = "Procedural macros for the effect crate"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

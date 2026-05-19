@@ -10,6 +10,7 @@ pub mod exit;
 pub mod schedule;
 pub mod sync;
 
+pub use effect_macros::Newtype;
 pub use exit::{Cause, Defect, Exit};
 pub use schedule::{Schedule, ScheduleStep};
 pub use sync::{Deferred, Queue, Ref, Semaphore};
