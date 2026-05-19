@@ -21,6 +21,7 @@
 # Data
 
 - [Newtypes and Brands](./data/newtypes.md)
+- [Typeclasses](./data/typeclasses.md)
 
 # Examples
 

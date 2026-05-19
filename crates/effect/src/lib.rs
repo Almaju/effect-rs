@@ -7,11 +7,14 @@
 //! - Requires an environment of type `R` to execute
 
 pub mod exit;
+pub mod refinement;
 pub mod schedule;
 pub mod sync;
+pub mod typeclass;
 
-pub use effect_macros::Newtype;
+pub use effect_macros::{Brand, Newtype};
 pub use exit::{Cause, Defect, Exit};
+pub use refinement::Refinement;
 pub use schedule::{Schedule, ScheduleStep};
 pub use sync::{Deferred, Queue, Ref, Semaphore};
 

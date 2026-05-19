@@ -65,37 +65,75 @@ If TypeScript users reach for `type UserId = string & { __brand: "UserId" }`
 or `Brand<"UserId">`, Rust users reach for `pub struct UserId(u64);`. Same
 intent, native syntax.
 
-## The Brand pattern — validated newtypes
+## Brands — validated newtypes
 
 A *brand* (Effect-TS terminology) is a newtype with a smart constructor
-that validates the input. The pattern:
+that validates the input. `#[derive(Brand)]` pairs with a `Refinement`
+impl that describes the validity rule:
 
 ```rust,no_run
-use effect::Newtype;
+use effect::{Brand, Newtype, Refinement};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Newtype)]
+pub struct EmailRefiner;
+impl Refinement<String> for EmailRefiner {
+    type Error = &'static str;
+    fn check(value: &String) -> Result<(), Self::Error> {
+        if !value.contains('@') { return Err("missing '@'"); }
+        if !value.contains('.') { return Err("missing '.'"); }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Newtype, Brand)]
+#[brand(refine_with = EmailRefiner)]
 pub struct Email(String);
 
-#[derive(Debug)]
-pub enum InvalidEmail { Empty, MissingAt }
+# fn main() {
+let ok  = Email::try_new("a@b.c".to_string());    // Ok(Email("a@b.c"))
+let bad = Email::try_new("nope".to_string());     // Err("missing '@'")
+# }
+```
 
+The derive generates exactly:
+
+```rust,ignore
 impl Email {
-    pub fn try_new(s: impl Into<String>) -> Result<Self, InvalidEmail> {
-        let s: String = s.into();
-        if s.is_empty()       { return Err(InvalidEmail::Empty); }
-        if !s.contains('@')   { return Err(InvalidEmail::MissingAt); }
-        Ok(Self::new(s))
+    pub fn try_new(value: String)
+        -> Result<Self, <EmailRefiner as Refinement<String>>::Error>
+    {
+        EmailRefiner::check(&value)?;
+        Ok(Self(value))
     }
 }
 ```
 
-Now `Email` is the *proof* that the inner string passed validation —
-once you have an `Email`, no further checking is needed. Pass it
-around with confidence.
+Once you have an `Email`, no further checking is needed downstream —
+the type *is* the proof.
 
-> A future `#[derive(Brand)]` will sugar over this pattern, generating
-> `try_new` from a `Refinement` trait impl. Until then, hand-roll
-> `try_new` as above — it's two lines.
+### Stock refinements
+
+Common shapes live in [`effect::refinement`]:
+
+| Refinement                 | Inner            | Behavior                       |
+| -------------------------- | ---------------- | ------------------------------ |
+| `NonEmpty`                 | `String`, `Vec<T>` | rejects empty                  |
+| `Positive`                 | `i8`..`isize`    | requires `> 0`                 |
+| `MaxLen<N>` (const generic)| `String`         | requires `len ≤ N` bytes       |
+
+Wire them in directly:
+
+```rust,no_run
+use effect::{Brand, Newtype, refinement::NonEmpty};
+
+#[derive(Debug, Clone, PartialEq, Eq, Newtype, Brand)]
+#[brand(refine_with = NonEmpty)]
+pub struct Title(String);
+```
+
+For domain-specific rules, write your own `Refinement` impl alongside
+the type it constrains.
+
+[`effect::refinement`]: https://docs.rs/effect/latest/effect/refinement/index.html
 
 ## In the wild
 

@@ -1,10 +1,11 @@
 //! Procedural macros for the [`effect`] crate.
 //!
-//! Currently exposes:
 //! - [`Newtype`] — derive for opaque single-field tuple structs.
+//! - [`Brand`] — derive a validated `try_new` constructor for a
+//!   newtype, given a `Refinement` impl.
 //!
-//! All macros are re-exported from `effect` itself; users should depend
-//! on `effect`, not on `effect-macros` directly.
+//! All macros are re-exported from `effect`; users should depend on
+//! `effect`, not on `effect-macros` directly.
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -73,6 +74,86 @@ fn expand_newtype(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             #[inline]
             pub fn into_inner(self) -> #inner { self.0 }
         }
+    })
+}
+
+/// Derive a `try_new` smart constructor for a newtype, given a
+/// [`Refinement`](https://docs.rs/effect/latest/effect/refinement/trait.Refinement.html)
+/// impl that validates the inner value.
+///
+/// ```ignore
+/// use effect::{Brand, Newtype, Refinement};
+///
+/// pub struct EmailRefiner;
+/// impl Refinement<String> for EmailRefiner {
+///     type Error = String;
+///     fn check(value: &String) -> Result<(), Self::Error> {
+///         if !value.contains('@') {
+///             return Err("missing '@'".into());
+///         }
+///         Ok(())
+///     }
+/// }
+///
+/// #[derive(Debug, Clone, PartialEq, Eq, Newtype, Brand)]
+/// #[brand(refine_with = EmailRefiner)]
+/// pub struct Email(String);
+///
+/// let ok  = Email::try_new("a@b".to_string());
+/// let bad = Email::try_new("nope".to_string());  // Err
+/// ```
+///
+/// Compile errors if `#[brand(refine_with = …)]` is missing.
+#[proc_macro_derive(Brand, attributes(brand))]
+pub fn derive_brand(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_brand(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn expand_brand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let name = &input.ident;
+    let inner = extract_inner(input)?;
+    let refiner = extract_refiner(input)?;
+
+    Ok(quote! {
+        impl #name {
+            /// Validated constructor — checks the inner value against
+            /// the refinement before wrapping.
+            pub fn try_new(
+                value: #inner,
+            ) -> ::core::result::Result<
+                Self,
+                <#refiner as ::effect::Refinement<#inner>>::Error,
+            > {
+                <#refiner as ::effect::Refinement<#inner>>::check(&value)?;
+                ::core::result::Result::Ok(Self(value))
+            }
+        }
+    })
+}
+
+fn extract_refiner(input: &DeriveInput) -> syn::Result<syn::Path> {
+    let mut refiner: Option<syn::Path> = None;
+    for attr in &input.attrs {
+        if attr.path().is_ident("brand") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("refine_with") {
+                    refiner = Some(meta.value()?.parse()?);
+                    Ok(())
+                } else {
+                    Err(meta.error("unknown #[brand(...)] key; expected `refine_with`"))
+                }
+            })?;
+        }
+    }
+    refiner.ok_or_else(|| {
+        syn::Error::new_spanned(
+            input,
+            "#[derive(Brand)] requires #[brand(refine_with = SomeRefiner)]",
+        )
     })
 }
 
