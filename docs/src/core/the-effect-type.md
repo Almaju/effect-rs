@@ -6,23 +6,29 @@ pub struct Effect<A, E, R> { /* … */ }
 
 An `Effect<A, E, R>` is a *description* of an asynchronous, potentially
 failing computation. Creating one does not start any work. Running it
-produces a `Result<A, E>`.
+produces an [`Exit<A, E>`](./errors-and-cause.md) — either a success or a
+structured [`Cause<E>`](./errors-and-cause.md) (typed failure, defect, or
+interruption).
 
 | Parameter | Meaning                                              |
 | --------- | ---------------------------------------------------- |
 | `A`       | The successful result type.                          |
-| `E`       | The typed error channel.                             |
+| `E`       | The typed failure channel (wrapped in `Cause::Fail`).|
 | `R`       | The environment (services) the effect needs to run.  |
 
 ## Construction
 
-| Function                                                                       | Use                                                          |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `Effect::succeed(value)`                                                       | An effect that immediately yields `value`.                   |
-| `Effect::fail(error)`                                                          | An effect that immediately fails with `error`.               |
-| `Effect::sync(\|\| Result<A, E>)`                                              | Lift a synchronous, fallible function.                       |
-| `Effect::from_fn(\|ctx\| async move { … })`                                    | Most general; receives the environment, returns a future.    |
-| `Effect::from(result)` (`impl From<Result<A, E>>`)                             | Lift an already-computed `Result`.                           |
+| Function                                                  | Use                                                                                         |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `Effect::succeed(value)`                                  | Immediately yields `value`.                                                                 |
+| `Effect::fail(error)`                                     | Immediately fails with a typed `E` (becomes `Cause::Fail`).                                 |
+| `Effect::die(defect)`                                     | Immediately fails with a defect (`Cause::Die`).                                             |
+| `Effect::die_message("...")`                              | Shortcut for `Effect::die(Defect::new("..."))`.                                             |
+| `Effect::from_cause(cause)`                               | Fails with a pre-built `Cause`.                                                             |
+| `Effect::sync(\|\| Result<A, E>)`                         | Lifts a synchronous, fallible function. **Panics inside `f` are caught into `Cause::Die`.** |
+| `Effect::from_fn(\|ctx\| async move { Result<A, E> })`    | Most general; receives the environment, returns a future producing a typed `Result`.        |
+| `Effect::from_fn_exit(\|ctx\| async move { Exit<A, E> })` | Like `from_fn`, but the closure produces an `Exit` directly — for emitting defects.         |
+| `Effect::from(result)` (`impl From<Result<A, E>>`)        | Lifts an already-computed `Result`.                                                         |
 
 ```rust,no_run
 use effect::Effect;
@@ -58,16 +64,22 @@ let program = Effect::<_, String, ()>::succeed(10)
 
 ## Error handling
 
-| Method                                          | Use                                                         |
-| ----------------------------------------------- | ----------------------------------------------------------- |
-| `.catch_all(\|e\| Effect<A, E2, R>)`            | Recover from any error, possibly changing the error type.   |
-| `.or_else(fallback)`                            | If this fails, run the fallback (same `A`/`E`).             |
+| Method                                                  | Use                                                                                                 |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `.catch_all(\|e\| Effect<A, E2, R>)`                    | Recover from typed failures (`Cause::Fail`). Defects/interruption pass through.                     |
+| `.catch_all_cause(\|c\| Effect<A, E2, R>)`              | Recover from *any* cause — typed failures, defects, and interruption.                               |
+| `.or_else(fallback)`                                    | On typed failure, run the fallback instead (same `A`/`E`).                                          |
+| `.sandbox()`                                            | Lift the full `Cause<E>` into the typed error channel; result is `Effect<A, Cause<E>, R>`.          |
+| `.unsandbox()`                                          | Inverse — flattens `Effect<A, Cause<E>, R>` back to `Effect<A, E, R>`.                              |
 
 ```rust,no_run
 use effect::Effect;
-let safe: Effect<i32, String, ()> =
-    Effect::fail("nope".to_string()).catch_all(|_| Effect::succeed(0));
+let safe: Effect<i32, String, ()> = Effect::<i32, String, ()>::fail("nope".to_string())
+    .catch_all(|_| Effect::<i32, String, ()>::succeed(0));
 ```
+
+See [Errors and Cause](./errors-and-cause.md) for the full mental model
+and worked examples.
 
 ## Concurrency
 
@@ -105,27 +117,41 @@ let standalone = needs_config.provide(Config { value: 21 });   // Effect<i32, St
 
 ## Running
 
+All four methods return [`Exit<A, E>`](./errors-and-cause.md). Convert
+with `.ok()`, `.err()`, `.into_result()`, or `.into_typed_result()`.
+
 | Method                          | When `R = …`        | What it does                              |
 | ------------------------------- | ------------------- | ----------------------------------------- |
-| `.execute()`                    | `R = ()`            | Run; produces `Result<A, E>`.             |
+| `.execute()`                    | `R = ()`            | Run; produces `Exit<A, E>`.               |
 | `.run_with(ctx)`                | any                 | Run, taking an owned `ctx`.               |
 | `.run(Arc<R>)`                  | any                 | Run, sharing an `Arc<R>`.                 |
 | `Runtime::new(ctx).run(&eff)`   | any                 | Long-lived runtime; reuse across calls.   |
 
+```rust,no_run
+use effect::{Effect, Exit};
+
+# #[tokio::main] async fn main() {
+let exit: Exit<i32, String> = Effect::<_, String, ()>::succeed(42).execute().await;
+assert_eq!(exit.ok(), Some(42));
+# }
+```
+
 See [Layers and the Runtime](./layers-and-runtime.md) for the recommended
-multi-service setup.
+multi-service setup, and [Errors and Cause](./errors-and-cause.md) for the
+full failure model.
 
 ## What's coming
 
-The current `Effect` is built on closure composition. Phase 1 of the
-roadmap replaces the internals with a stack-safe interpreter so we can
-support:
+`Effect`'s public API is settling, but the internals will change. Phase 1
+replaces the current closure-based representation with a stack-safe
+interpreter, unlocking:
 
-- `Cause<E>` and `Exit<A, E>` to distinguish expected failures from
-  defects and interruption.
-- `Effect::scoped` for resource safety.
+- `Effect::scoped` for resource safety (acquire/release with async release).
 - `Schedule` for retries and repetition.
 - `Effect::fork` + structured fiber supervision.
 - `Effect::race` and friends.
+- Panic catching inside `Effect::from_fn` (sync already does it).
+- Proper handling of typed failures inside compound causes — see the
+  *Known limitation* note under `catch_all` in the rustdoc.
 
-The public API above is intended to remain source-compatible.
+The public methods above are intended to remain source-compatible.

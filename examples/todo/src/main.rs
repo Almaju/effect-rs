@@ -1,6 +1,6 @@
 mod todo;
 
-use effect::Effect;
+use effect::{Cause, Effect, Exit};
 use std::sync::Arc;
 use todo::*;
 
@@ -21,8 +21,8 @@ async fn main() {
 
     // create_and_log requires R: HasRepo + HasLogger.
     // The runtime's context satisfies both — this compiles!
-    let result = runtime.run(&create_and_log("Buy groceries".into())).await;
-    println!("  {:?}\n", result);
+    let exit = runtime.run(&create_and_log("Buy groceries".into())).await;
+    println!("  {exit:?}\n");
 
     // ┌──────────────────────────────────────────────────────────┐
     // │ COMPILE-TIME SAFETY: uncomment to see the error!        │
@@ -53,41 +53,40 @@ async fn main() {
         .with_logger()
         .into_runtime();
 
-    match runtime.run(&program).await {
-        Ok(_) => println!("  ✨ Done\n"),
-        Err(e) => eprintln!("  ❌ {e}\n"),
-    }
+    report(runtime.run(&program).await);
 
     // ── 3. Do-notation style (from_fn + ?) ──────────────
     // Like Effect.gen(function*() { yield* ... }) in Effect-TS.
-    // The `?` operator gives monadic short-circuiting.
+    // `Exit::into_typed_result()?` is the per-step plumbing — the
+    // upcoming `eff!` macro will hide it.
 
     println!("── Do-Notation Style ───────────────────");
 
-    // Note: R is generic — this function works with ANY context
-    // that provides HasRepo + HasLogger.
     fn program_gen<R: HasRepo + HasLogger>() -> Effect<(), TodoError, R> {
         Effect::from_fn(|ctx: Arc<R>| async move {
             let t1 = create_and_log("Read a book".into())
                 .run(ctx.clone())
-                .await?;
+                .await
+                .into_typed_result()?;
             let _t2 = create_and_log("Go for a walk".into())
                 .run(ctx.clone())
-                .await?;
+                .await
+                .into_typed_result()?;
             let t3 = create_and_log("Cook dinner".into())
                 .run(ctx.clone())
-                .await?;
+                .await
+                .into_typed_result()?;
 
-            complete_todo(t1.id).run(ctx.clone()).await?;
-            complete_todo(t3.id).run(ctx.clone()).await?;
+            complete_todo(t1.id).run(ctx.clone()).await.into_typed_result()?;
+            complete_todo(t3.id).run(ctx.clone()).await.into_typed_result()?;
 
-            let todos = list_todos().run(ctx.clone()).await?;
+            let todos = list_todos().run(ctx.clone()).await.into_typed_result()?;
             println!("\n  📋 Todo List:");
             for todo in &todos {
                 println!("    {todo}");
             }
 
-            let s = todo_summary().run(ctx).await?;
+            let s = todo_summary().run(ctx).await.into_typed_result()?;
             println!("\n  📊 {s}");
             Ok(())
         })
@@ -98,10 +97,7 @@ async fn main() {
         .with_logger()
         .into_runtime();
 
-    match runtime.run(&program_gen()).await {
-        Ok(_) => println!("  ✨ Done\n"),
-        Err(e) => eprintln!("  ❌ {e}\n"),
-    }
+    report(runtime.run(&program_gen()).await);
 
     // ── 4. Error handling ───────────────────────────────
     // catch_all, or_else, map_error — typed recovery.
@@ -114,7 +110,6 @@ async fn main() {
         .into_runtime();
 
     // Validation error → catch_all recovers
-    // Turbofish on succeed tells the compiler E2 = TodoError
     let validated = create_todo("".into())
         .map(|t: Todo| t.title)
         .catch_all(|e: TodoError| Effect::<_, TodoError, _>::succeed(format!("Recovered: {e}")));
@@ -131,7 +126,14 @@ async fn main() {
     // map_error to wrap domain errors
     let mapped = get_todo(999).map_error(|e| format!("App error: {e}"));
     println!("  map_error:   {:?}", runtime.run(&mapped).await);
-    println!();
+
+    // catch_all_cause recovers from defects (Die) too
+    let with_defect = Effect::<i32, TodoError, _>::die_message("hardware fault")
+        .catch_all_cause(|c| {
+            println!("  caught cause: {c}");
+            Effect::<i32, TodoError, _>::succeed(-1)
+        });
+    println!("  catch_cause: {:?}\n", runtime.run(&with_defect).await);
 
     // ── 5. Parallel composition (zip) ───────────────────
 
@@ -139,11 +141,21 @@ async fn main() {
 
     fn parallel_demo<R: HasRepo + HasLogger>() -> Effect<(), TodoError, R> {
         Effect::from_fn(|ctx: Arc<R>| async move {
-            create_and_log("Task A".into()).run(ctx.clone()).await?;
-            create_and_log("Task B".into()).run(ctx.clone()).await?;
+            create_and_log("Task A".into())
+                .run(ctx.clone())
+                .await
+                .into_typed_result()?;
+            create_and_log("Task B".into())
+                .run(ctx.clone())
+                .await
+                .into_typed_result()?;
 
             // zip runs both concurrently via tokio::join!
-            let (a, b) = get_todo(1).zip(get_todo(2)).run(ctx.clone()).await?;
+            let (a, b) = get_todo(1)
+                .zip(get_todo(2))
+                .run(ctx.clone())
+                .await
+                .into_typed_result()?;
             println!("  Concurrent: {a}  &  {b}");
 
             // zip_with combines results
@@ -152,7 +164,8 @@ async fn main() {
                     format!("'{}' — overall {}", todo.title, summary)
                 })
                 .run(ctx)
-                .await?;
+                .await
+                .into_typed_result()?;
             println!("  Combined:   {msg}");
             Ok(())
         })
@@ -163,10 +176,7 @@ async fn main() {
         .with_logger()
         .into_runtime();
 
-    match runtime.run(&parallel_demo()).await {
-        Ok(_) => println!("  ✨ Done\n"),
-        Err(e) => eprintln!("  ❌ {e}\n"),
-    }
+    report(runtime.run(&parallel_demo()).await);
 
     // ── 6. Provide (eliminates R) ───────────────────────
     // .provide() bakes in the context, turning R into ().
@@ -176,16 +186,23 @@ async fn main() {
 
     let needs_deps = create_and_log("Standalone todo".into()).map(|t| format!("  {t}"));
 
-    // provide() erases R → Effect<String, TodoError, ()>
     let layer = Layer::new()
         .with_repo(InMemoryTodoRepo::new())
         .with_logger();
     let standalone = needs_deps.provide(layer.into_ctx());
 
-    // execute() only exists on Effect<_, _, ()>
     match standalone.execute().await {
-        Ok(msg) => println!("{msg}"),
-        Err(e) => eprintln!("  ❌ {e}"),
+        Exit::Success(msg) => println!("{msg}"),
+        Exit::Failure(c) => eprintln!("  ❌ {c}"),
     }
     println!("  ✨ Done");
+}
+
+/// Print a success/failure marker for any `Exit<_, TodoError>`.
+fn report<A>(exit: Exit<A, TodoError>) {
+    match exit {
+        Exit::Success(_) => println!("  ✨ Done\n"),
+        Exit::Failure(Cause::Fail(e)) => eprintln!("  ❌ {e}\n"),
+        Exit::Failure(c) => eprintln!("  💥 {c}\n"),
+    }
 }
