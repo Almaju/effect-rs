@@ -1,0 +1,12 @@
+[package]
+name = "effect-data"
+version = "0.0.1"
+description = "Persistent collections for the effect crate (Chunk, HashMap, HashSet)"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+im = "15"

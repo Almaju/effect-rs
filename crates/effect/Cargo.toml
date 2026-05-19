@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 tokio = { workspace = true }
 async-channel = { workspace = true }
+effect-data = { workspace = true }
 effect-macros = { workspace = true }
 
 [dev-dependencies]

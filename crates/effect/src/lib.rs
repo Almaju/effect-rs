@@ -12,6 +12,12 @@ pub mod schedule;
 pub mod sync;
 pub mod typeclass;
 
+/// Persistent collections: re-export of [`effect_data`] so users can
+/// reach them as `effect::data::Chunk`, etc.
+pub mod data {
+    pub use effect_data::*;
+}
+
 pub use effect_macros::{Brand, Newtype};
 pub use exit::{Cause, Defect, Exit};
 pub use refinement::Refinement;
