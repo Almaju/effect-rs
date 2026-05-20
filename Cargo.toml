@@ -5,6 +5,7 @@ members = [
     "crates/effect-cli",
     "crates/effect-config",
     "crates/effect-data",
+    "crates/effect-http",
     "crates/effect-logging",
     "crates/effect-macros",
     "crates/effect-platform",
@@ -28,6 +29,7 @@ effect = { path = "crates/effect", version = "0.0.1" }
 effect-cli = { path = "crates/effect-cli", version = "0.0.1" }
 effect-config = { path = "crates/effect-config", version = "0.0.1" }
 effect-data = { path = "crates/effect-data", version = "0.0.1" }
+effect-http = { path = "crates/effect-http", version = "0.0.1" }
 effect-logging = { path = "crates/effect-logging", version = "0.0.1" }
 effect-macros = { path = "crates/effect-macros", version = "0.0.1" }
 effect-platform = { path = "crates/effect-platform", version = "0.0.1" }
