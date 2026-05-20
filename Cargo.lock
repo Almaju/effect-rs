@@ -68,6 +68,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "effect-config"
+version = "0.0.1"
+dependencies = [
+ "effect",
+ "effect-schema",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "effect-data"
 version = "0.0.1"
 dependencies = [

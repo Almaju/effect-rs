@@ -18,6 +18,7 @@
 - [Scopes and Resources](./core/scopes-and-resources.md)
 - [Concurrency](./core/concurrency.md)
 - [Streams](./core/streams.md)
+- [Configuration](./core/config.md)
 
 # Data
 
