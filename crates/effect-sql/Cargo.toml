@@ -1,0 +1,16 @@
+[package]
+name = "effect-sql"
+version = "0.0.1"
+description = "Abstract SqlExecutor trait + Effect helpers + Fake for tests"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

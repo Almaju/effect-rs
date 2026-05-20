@@ -24,6 +24,8 @@
 - [Pretty Printing](./core/printer.md)
 - [CLI](./core/cli.md)
 - [HTTP Client](./core/http.md)
+- [SQL](./core/sql.md)
+- [RPC](./core/rpc.md)
 
 # Data
 

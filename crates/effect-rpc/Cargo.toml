@@ -1,0 +1,18 @@
+[package]
+name = "effect-rpc"
+version = "0.0.1"
+description = "Typed RPC over a pluggable transport (HTTP by default)"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+effect-http = { workspace = true }
+effect-schema = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

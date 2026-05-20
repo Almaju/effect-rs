@@ -206,11 +206,31 @@ name = "effect-printer"
 version = "0.0.1"
 
 [[package]]
+name = "effect-rpc"
+version = "0.0.1"
+dependencies = [
+ "effect",
+ "effect-http",
+ "effect-schema",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "effect-schema"
 version = "0.0.1"
 dependencies = [
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "effect-sql"
+version = "0.0.1"
+dependencies = [
+ "effect",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
