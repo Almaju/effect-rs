@@ -141,3 +141,44 @@ impl Scope {
 pub fn current_scope() -> Option<Arc<Scope>> {
     SCOPE.try_with(|s| s.clone()).ok()
 }
+
+// ── Fiber ─────────────────────────────────────────────────────────
+
+/// A handle to a forked effect running on a separate tokio task.
+///
+/// Produced by [`Effect::fork`](crate::Effect::fork). Use
+/// [`Fiber::join`] to await the result and [`Fiber::interrupt`] for
+/// cooperative cancellation.
+pub struct Fiber<A, E> {
+    pub(crate) handle: tokio::task::JoinHandle<crate::Exit<A, E>>,
+    pub(crate) interrupt_flag: Arc<AtomicBool>,
+}
+
+impl<A, E> Fiber<A, E>
+where
+    A: Send + 'static,
+    E: Send + 'static,
+{
+    /// Set the child's interrupt flag. The child observes it at the
+    /// next `flat_map` boundary (or other checkpoint) and short-circuits
+    /// with `Cause::Interrupt`.
+    pub fn interrupt(&self) {
+        self.interrupt_flag.store(true, Ordering::SeqCst);
+    }
+
+    /// Awaits the child to completion and returns its [`Exit`].
+    /// Maps tokio JoinErrors to:
+    /// - `Cause::Interrupt` for cancelled tasks,
+    /// - `Cause::Die` for panicked tasks (with the panic message).
+    pub async fn join(self) -> crate::Exit<A, E> {
+        match self.handle.await {
+            Ok(exit) => exit,
+            Err(je) if je.is_cancelled() => {
+                crate::Exit::Failure(crate::Cause::Interrupt)
+            }
+            Err(je) => crate::Exit::Failure(crate::Cause::Die(
+                crate::Defect::new(format!("fiber panic: {je}")),
+            )),
+        }
+    }
+}

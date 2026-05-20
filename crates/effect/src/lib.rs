@@ -30,7 +30,7 @@ pub mod schema {
 // don't collide, mirroring how serde re-exports `Serialize`.
 pub use effect_macros::{Brand, Newtype, Schema};
 pub use effect_schema::{Schema, SchemaError};
-pub use fiber::{FiberState, Finalizer, Scope};
+pub use fiber::{Fiber, FiberState, Finalizer, Scope};
 pub use exit::{Cause, Defect, Exit};
 pub use refinement::Refinement;
 pub use schedule::{Schedule, ScheduleStep};
@@ -278,6 +278,101 @@ where
                     Err(payload) => Exit::Failure(Cause::Die(Defect::from_panic(payload))),
                 };
                 Box::pin(async move { exit })
+            }),
+        }
+    }
+}
+
+// ── Fork / Race ───────────────────────────────────────────────────
+
+impl<A, E, R> Effect<A, E, R>
+where
+    A: Send + 'static,
+    E: Send + 'static,
+    R: Send + Sync + 'static,
+{
+    /// Spawn this effect on a new tokio task and return a [`Fiber`]
+    /// handle. The fiber has its own [`FiberState`] (own interrupt
+    /// flag); a [`Scope`] inherited from the parent is **not**
+    /// propagated — child fibers need their own `Effect::scoped`.
+    ///
+    /// The outer effect's `E` matches the inner's so it threads
+    /// cleanly through `Block::run` etc.; spawning itself never
+    /// produces a typed failure.
+    pub fn fork(self) -> Effect<Fiber<A, E>, E, R> {
+        let run_fn = self.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                Box::pin(async move {
+                    let child_state = FiberState::new();
+                    let interrupt_flag = child_state.interrupt_handle();
+                    let handle = tokio::spawn(fiber::FIBER_STATE.scope(
+                        child_state,
+                        async move { run(r).await },
+                    ));
+                    Exit::Success(Fiber { handle, interrupt_flag })
+                })
+            }),
+        }
+    }
+
+    /// Run `self` and `other` concurrently; return the first to
+    /// complete (success **or** failure). The loser is interrupted via
+    /// its fiber's interrupt flag.
+    pub fn race(self, other: Effect<A, E, R>) -> Effect<A, E, R> {
+        let f1 = self.run_fn;
+        let f2 = other.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let f1 = f1.clone();
+                let f2 = f2.clone();
+                let r1 = r.clone();
+                let r2 = r;
+                Box::pin(async move {
+                    let s1 = FiberState::new();
+                    let s2 = FiberState::new();
+                    let intr1 = s1.interrupt_handle();
+                    let intr2 = s2.interrupt_handle();
+                    let h1 = tokio::spawn(
+                        fiber::FIBER_STATE.scope(s1, async move { (f1)(r1).await }),
+                    );
+                    let h2 = tokio::spawn(
+                        fiber::FIBER_STATE.scope(s2, async move { (f2)(r2).await }),
+                    );
+                    tokio::select! {
+                        res1 = h1 => {
+                            intr2.store(
+                                true,
+                                std::sync::atomic::Ordering::SeqCst,
+                            );
+                            match res1 {
+                                Ok(exit) => exit,
+                                Err(je) if je.is_cancelled() => {
+                                    Exit::Failure(Cause::Interrupt)
+                                }
+                                Err(je) => Exit::Failure(Cause::Die(
+                                    Defect::new(format!("race fiber panic: {je}"))
+                                )),
+                            }
+                        }
+                        res2 = h2 => {
+                            intr1.store(
+                                true,
+                                std::sync::atomic::Ordering::SeqCst,
+                            );
+                            match res2 {
+                                Ok(exit) => exit,
+                                Err(je) if je.is_cancelled() => {
+                                    Exit::Failure(Cause::Interrupt)
+                                }
+                                Err(je) => Exit::Failure(Cause::Die(
+                                    Defect::new(format!("race fiber panic: {je}"))
+                                )),
+                            }
+                        }
+                    }
+                })
             }),
         }
     }
