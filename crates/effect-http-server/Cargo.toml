@@ -1,0 +1,23 @@
+[package]
+name = "effect-http-server"
+version = "0.0.1"
+description = "Minimal HTTP server on hyper 1.x — Router + Handler + Effect-typed entry"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect-http = { workspace = true }
+hyper = { version = "1", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "macros"] }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+effect = { workspace = true }
+reqwest = { version = "0.12", default-features = false }

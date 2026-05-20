@@ -3,10 +3,12 @@ resolver = "3"
 members = [
     "crates/effect",
     "crates/effect-ai",
+    "crates/effect-ai-openai",
     "crates/effect-cli",
     "crates/effect-config",
     "crates/effect-data",
     "crates/effect-http",
+    "crates/effect-http-server",
     "crates/effect-logging",
     "crates/effect-macros",
     "crates/effect-platform",
@@ -14,6 +16,7 @@ members = [
     "crates/effect-rpc",
     "crates/effect-schema",
     "crates/effect-sql",
+    "crates/effect-sql-postgres",
     "crates/effect-sql-sqlite",
     "crates/effect-stream",
     "crates/effect-test",
@@ -33,10 +36,12 @@ tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "sync", "ti
 async-channel = "2"
 effect = { path = "crates/effect", version = "0.0.1" }
 effect-ai = { path = "crates/effect-ai", version = "0.0.1" }
+effect-ai-openai = { path = "crates/effect-ai-openai", version = "0.0.1" }
 effect-cli = { path = "crates/effect-cli", version = "0.0.1" }
 effect-config = { path = "crates/effect-config", version = "0.0.1" }
 effect-data = { path = "crates/effect-data", version = "0.0.1" }
 effect-http = { path = "crates/effect-http", version = "0.0.1" }
+effect-http-server = { path = "crates/effect-http-server", version = "0.0.1" }
 effect-logging = { path = "crates/effect-logging", version = "0.0.1" }
 effect-macros = { path = "crates/effect-macros", version = "0.0.1" }
 effect-platform = { path = "crates/effect-platform", version = "0.0.1" }
@@ -44,6 +49,7 @@ effect-printer = { path = "crates/effect-printer", version = "0.0.1" }
 effect-rpc = { path = "crates/effect-rpc", version = "0.0.1" }
 effect-schema = { path = "crates/effect-schema", version = "0.0.1" }
 effect-sql = { path = "crates/effect-sql", version = "0.0.1" }
+effect-sql-postgres = { path = "crates/effect-sql-postgres", version = "0.0.1" }
 effect-sql-sqlite = { path = "crates/effect-sql-sqlite", version = "0.0.1" }
 effect-stream = { path = "crates/effect-stream", version = "0.0.1" }
 effect-test = { path = "crates/effect-test", version = "0.0.1" }

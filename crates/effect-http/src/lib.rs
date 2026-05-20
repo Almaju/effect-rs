@@ -120,6 +120,15 @@ pub trait HttpClient: Send + Sync + 'static {
     fn send(&self, req: Request) -> AsyncResult<Result<Response, HttpError>>;
 }
 
+/// `Arc<H>` is itself an `HttpClient` — convenient when you want to
+/// keep a clone-able handle to a fake while the provider takes
+/// ownership of the client.
+impl<H: HttpClient> HttpClient for std::sync::Arc<H> {
+    fn send(&self, req: Request) -> AsyncResult<Result<Response, HttpError>> {
+        (**self).send(req)
+    }
+}
+
 /// `reqwest`-backed implementation.
 pub struct LiveHttpClient {
     inner: reqwest::Client,
