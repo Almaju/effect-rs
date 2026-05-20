@@ -1,0 +1,17 @@
+[package]
+name = "effect-workflow"
+version = "0.0.1"
+description = "Durable workflows over an effect-typed step journal"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+effect-schema = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

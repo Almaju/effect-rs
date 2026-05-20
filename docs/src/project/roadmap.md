@@ -16,11 +16,7 @@ A short summary of the phases:
 | 4     | **Observability + Platform (done; metric/OTel deferred)** | `effect-logging`: tracing wrappers + instrument/with_span; `effect-platform`: Clock, Random (fastrand), FileSystem (tokio::fs) with Live* impls. **Deferred:** `effect-metric`, `effect-otel`, Terminal, Stdio, Process/Command — straightforward extensions to add when needed. |
 | 5     | **CLI + Printer (done)**           | `effect-printer`: Wadler doc combinators + ANSI styling (Bold/Italic/Underline/Dim + Color); `effect-cli`: Command/Arg/Opt/Flag spec + argv parser + Printer-rendered help. **Deferred:** subcommands, Schema-typed args, combined short flags, `--key=value` syntax. |
 | 6     | **HTTP + SQL + RPC (done; server + drivers deferred)** | `effect-http`: HttpClient trait + LiveHttpClient (reqwest+rustls) + FakeHttpClient + RequestBuilder; `effect-sql`: abstract SqlExecutor + SqlValue + FakeSqlExecutor; `effect-rpc`: typed Endpoint<Req,Resp> + Schema-driven encode/decode + LiveHttpRpcTransport + FakeRpcTransport. **Deferred:** HTTP server (`effect-http-server`), per-DB drivers (`effect-sql-sqlite`/`effect-sql-postgres`), HttpApi (schema-first endpoint declaration), streaming endpoints. |
-| 3     | Streams, STM, Config             | `Stream`/`Sink`/`Channel`; `Tx*`; declarative config.   |
-| 4     | Observability + Platform         | Logger on `tracing`; Metrics; OTel; FS/Terminal/Stdio. |
-| 5     | CLI + Printer                    | `effect-printer`; `effect-cli`.                        |
-| 6     | HTTP, RPC, SQL                   | `effect-http` (incl. HttpApi); `effect-rpc`; sqlx-backed `effect-sql`. |
-| 7     | Workflow, Cluster, AI            | Durable workflows; entity sharding; LLM abstractions.  |
+| 7     | **AI + Workflow (done; cluster deferred)** | `effect-ai`: `LlmProvider` trait + `ChatMessage`/`ChatRequest`/`ChatResponse`/`TokenUsage` + `FakeLlmProvider` (constant + scripted) + helpers (`complete`/`chat`/`simple`); `effect-workflow`: event-sourced step journal — `WorkflowStorage` trait + `InMemoryWorkflowStorage` + `WorkflowContext::step(name, fut)` that replays from journal or runs+journals. **Deferred:** `effect-cluster` (distributed entity sharding — too big for a single slice; users with cluster needs today should reach for Temporal/Cadence/dedicated systems); per-provider AI adapters; streaming completions; workflow timers/signals. |
 | 8     | Polish                           | Benchmarks; CI hardening; 0.1 release.                 |
 
 ## Rule

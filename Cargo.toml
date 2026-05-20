@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/effect",
+    "crates/effect-ai",
     "crates/effect-cli",
     "crates/effect-config",
     "crates/effect-data",
@@ -14,6 +15,7 @@ members = [
     "crates/effect-schema",
     "crates/effect-sql",
     "crates/effect-stream",
+    "crates/effect-workflow",
     "examples/todo",
 ]
 
@@ -28,6 +30,7 @@ repository = "https://github.com/Almaju/effect-rs"
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "sync", "time"] }
 async-channel = "2"
 effect = { path = "crates/effect", version = "0.0.1" }
+effect-ai = { path = "crates/effect-ai", version = "0.0.1" }
 effect-cli = { path = "crates/effect-cli", version = "0.0.1" }
 effect-config = { path = "crates/effect-config", version = "0.0.1" }
 effect-data = { path = "crates/effect-data", version = "0.0.1" }
@@ -40,3 +43,4 @@ effect-rpc = { path = "crates/effect-rpc", version = "0.0.1" }
 effect-schema = { path = "crates/effect-schema", version = "0.0.1" }
 effect-sql = { path = "crates/effect-sql", version = "0.0.1" }
 effect-stream = { path = "crates/effect-stream", version = "0.0.1" }
+effect-workflow = { path = "crates/effect-workflow", version = "0.0.1" }

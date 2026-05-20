@@ -128,6 +128,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "effect-ai"
+version = "0.0.1"
+dependencies = [
+ "effect",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "effect-cli"
 version = "0.0.1"
 dependencies = [
@@ -239,6 +248,16 @@ version = "0.0.1"
 dependencies = [
  "effect",
  "futures",
+ "tokio",
+]
+
+[[package]]
+name = "effect-workflow"
+version = "0.0.1"
+dependencies = [
+ "effect",
+ "effect-schema",
+ "thiserror",
  "tokio",
 ]
 

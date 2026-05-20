@@ -26,6 +26,8 @@
 - [HTTP Client](./core/http.md)
 - [SQL](./core/sql.md)
 - [RPC](./core/rpc.md)
+- [AI](./core/ai.md)
+- [Workflows](./core/workflow.md)
 
 # Data
 
