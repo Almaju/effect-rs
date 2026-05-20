@@ -30,8 +30,7 @@
 //! ```
 
 use effect_ai::{
-    AsyncResult, ChatMessage, ChatRequest, ChatResponse, LlmError, LlmProvider, Role,
-    TokenUsage,
+    AsyncResult, ChatRequest, ChatResponse, LlmError, LlmProvider, Role, TokenUsage,
 };
 use effect_http::{HttpClient, HttpError, Method, Request as HttpRequest, Response as HttpResponse};
 use effect_schema::serde_json::{self, Value, json};

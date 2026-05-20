@@ -42,6 +42,17 @@ where
         }
     }
 
+    /// Construct a stream from a factory that, given the runtime
+    /// environment, produces a fresh [`BoxStream`] each time the
+    /// stream is consumed. Useful for adapting third-party stream
+    /// sources (HTTP SSE, channel receivers, sub-process stdout, …).
+    pub fn from_factory<F>(f: F) -> Self
+    where
+        F: Fn(Arc<R>) -> BoxStream<'static, Result<A, E>> + Send + Sync + 'static,
+    {
+        Stream { factory: Arc::new(f) }
+    }
+
     /// A stream that emits exactly one value and completes.
     pub fn single(value: A) -> Self
     where

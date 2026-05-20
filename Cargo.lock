@@ -228,6 +228,8 @@ name = "effect-ai"
 version = "0.0.1"
 dependencies = [
  "effect",
+ "effect-stream",
+ "futures",
  "thiserror",
  "tokio",
 ]
