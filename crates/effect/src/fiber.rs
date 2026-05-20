@@ -8,11 +8,17 @@
 //! `tokio::spawn` calls would lose it (which is why `Effect::fork`
 //! propagates it explicitly — see Phase 1h).
 
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+/// A boxed finalizer future.
+pub type Finalizer = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 tokio::task_local! {
     pub(crate) static FIBER_STATE: FiberState;
+    pub(crate) static SCOPE: Arc<Scope>;
 }
 
 /// Per-execution context shared by all combinators within one
@@ -78,4 +84,60 @@ tokio::task_local! {
 pub fn interruptible_now() -> bool {
     // Default is interruptible; only `Effect::uninterruptible` flips it.
     INTERRUPTIBLE.try_with(|b| *b).unwrap_or(true)
+}
+
+// ── Scope ─────────────────────────────────────────────────────────
+
+/// A registry of finalizers that run when the scope closes.
+///
+/// Finalizers run in **LIFO** order regardless of how the scope ended
+/// (success, typed failure, defect, or interruption). Each runs to
+/// completion under an uninterruptible mask.
+pub struct Scope {
+    finalizers: Mutex<Vec<Finalizer>>,
+}
+
+impl Default for Scope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Scope {
+    pub fn new() -> Self {
+        Scope {
+            finalizers: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Register a finalizer. It'll run when the surrounding
+    /// [`Effect::scoped`](crate::Effect::scoped) call closes the scope.
+    pub fn add_finalizer(&self, f: Finalizer) {
+        self.finalizers
+            .lock()
+            .expect("Scope mutex poisoned")
+            .push(f);
+    }
+
+    /// Run all registered finalizers in LIFO order, swallowing panics
+    /// to ensure subsequent finalizers still get a chance.
+    pub async fn close(&self) {
+        let mut taken = self
+            .finalizers
+            .lock()
+            .expect("Scope mutex poisoned")
+            .drain(..)
+            .collect::<Vec<_>>();
+        while let Some(fin) = taken.pop() {
+            // Each finalizer runs uninterruptibly so a pending
+            // interrupt doesn't prevent cleanup.
+            INTERRUPTIBLE.scope(false, fin).await;
+        }
+    }
+}
+
+/// Find the current scope, or `None` if `acquire_release` was called
+/// outside an `Effect::scoped` region.
+pub fn current_scope() -> Option<Arc<Scope>> {
+    SCOPE.try_with(|s| s.clone()).ok()
 }

@@ -30,7 +30,7 @@ pub mod schema {
 // don't collide, mirroring how serde re-exports `Serialize`.
 pub use effect_macros::{Brand, Newtype, Schema};
 pub use effect_schema::{Schema, SchemaError};
-pub use fiber::FiberState;
+pub use fiber::{FiberState, Finalizer, Scope};
 pub use exit::{Cause, Defect, Exit};
 pub use refinement::Refinement;
 pub use schedule::{Schedule, ScheduleStep};
@@ -229,6 +229,28 @@ where
         }
     }
 
+    /// Run `inner` inside a fresh [`Scope`]. Finalizers registered via
+    /// [`acquire_release`] run when this effect completes — for
+    /// success, typed failure, defect, or interruption alike — in
+    /// LIFO order.
+    pub fn scoped(inner: Effect<A, E, R>) -> Self {
+        let inner_run = inner.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = inner_run.clone();
+                Box::pin(async move {
+                    let scope = Arc::new(Scope::new());
+                    let scope_for_close = scope.clone();
+                    let result = fiber::SCOPE
+                        .scope(scope, async move { run(r).await })
+                        .await;
+                    scope_for_close.close().await;
+                    result
+                })
+            }),
+        }
+    }
+
     /// An effect that fails with the given pre-built [`Cause`].
     pub fn from_cause(cause: Cause<E>) -> Self
     where
@@ -259,6 +281,45 @@ where
             }),
         }
     }
+}
+
+// ── acquire_release ───────────────────────────────────────────────
+
+/// Acquire a resource and register a finalizer to release it when the
+/// surrounding [`Effect::scoped`] closes.
+///
+/// **Panics** at runtime if called outside an `Effect::scoped` region —
+/// that's a programmer error, surfaced loudly.
+///
+/// The finalizer always runs (success, failure, or interruption) and
+/// runs uninterruptibly so an in-flight cancel can't tear down a
+/// connection mid-cleanup.
+pub fn acquire_release<A, E, R, Rel, RelFut>(
+    acquire: Effect<A, E, R>,
+    release: Rel,
+) -> Effect<A, E, R>
+where
+    A: Clone + Send + Sync + 'static,
+    E: Send + 'static,
+    R: Send + Sync + 'static,
+    Rel: Fn(A) -> RelFut + Send + Sync + 'static,
+    RelFut: Future<Output = ()> + Send + 'static,
+{
+    let release = Arc::new(release);
+    acquire.flat_map(move |acquired: A| {
+        let release = release.clone();
+        let acquired_for_finalizer = acquired.clone();
+        Effect::sync(move || {
+            let scope = fiber::current_scope()
+                .expect("acquire_release called outside an Effect::scoped region");
+            let acquired_clone = acquired_for_finalizer.clone();
+            let release_clone = release.clone();
+            scope.add_finalizer(Box::pin(async move {
+                (release_clone)(acquired_clone).await;
+            }));
+            Ok(acquired.clone())
+        })
+    })
 }
 
 // ── Running ───────────────────────────────────────────────────
