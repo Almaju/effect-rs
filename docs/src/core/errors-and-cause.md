@@ -194,7 +194,3 @@ and pattern-match on the [`Exit`].
   to `Die`.
 - **Cause normalization** — duplicate causes, empty causes, and pretty
   printing of compound trees will improve once the interpreter is in.
-- **`catch_all` and compound causes** — today, if you `zip` two failing
-  effects and call `catch_all`, the compound `Parallel` cause doesn't
-  match the `Fail` arm and conversion will panic. Use `catch_all_cause`
-  or `sandbox` for these cases. Fixed properly in Phase 1b.

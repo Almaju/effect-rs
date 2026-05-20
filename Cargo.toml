@@ -14,7 +14,9 @@ members = [
     "crates/effect-rpc",
     "crates/effect-schema",
     "crates/effect-sql",
+    "crates/effect-sql-sqlite",
     "crates/effect-stream",
+    "crates/effect-test",
     "crates/effect-workflow",
     "examples/todo",
 ]
@@ -42,5 +44,7 @@ effect-printer = { path = "crates/effect-printer", version = "0.0.1" }
 effect-rpc = { path = "crates/effect-rpc", version = "0.0.1" }
 effect-schema = { path = "crates/effect-schema", version = "0.0.1" }
 effect-sql = { path = "crates/effect-sql", version = "0.0.1" }
+effect-sql-sqlite = { path = "crates/effect-sql-sqlite", version = "0.0.1" }
 effect-stream = { path = "crates/effect-stream", version = "0.0.1" }
+effect-test = { path = "crates/effect-test", version = "0.0.1" }
 effect-workflow = { path = "crates/effect-workflow", version = "0.0.1" }

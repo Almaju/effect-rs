@@ -198,37 +198,62 @@ pub fn parse(cmd: &Command, argv: Vec<String>) -> Result<ParsedCommand, CliError
             return Err(CliError::HelpRequested);
         }
         if let Some(stripped) = tok.strip_prefix("--") {
-            // long-form
-            if let Some(f) = long_flag.get(stripped) {
+            // long-form, possibly with --key=value
+            let (key, inline_value) = match stripped.split_once('=') {
+                Some((k, v)) => (k, Some(v.to_string())),
+                None => (stripped, None),
+            };
+            if let Some(f) = long_flag.get(key) {
+                if inline_value.is_some() {
+                    // --flag=anything is bogus for a boolean flag.
+                    return Err(CliError::Unknown(tok));
+                }
                 parsed.flags.insert(f.long.clone(), true);
-            } else if let Some(o) = long_opt.get(stripped) {
-                let val = iter.next().ok_or_else(|| CliError::MissingOptionValue {
-                    name: stripped.to_string(),
-                })?;
+            } else if let Some(o) = long_opt.get(key) {
+                let val = if let Some(v) = inline_value {
+                    v
+                } else {
+                    iter.next().ok_or_else(|| CliError::MissingOptionValue {
+                        name: key.to_string(),
+                    })?
+                };
                 parsed.options.insert(o.long.clone(), val);
             } else {
                 return Err(CliError::Unknown(tok));
             }
         } else if let Some(stripped) = tok.strip_prefix("-") {
-            // short-form (single char only)
-            let mut chars = stripped.chars();
-            let Some(c) = chars.next() else {
+            // short-form. Two cases:
+            //  - "-x"    — single short option or flag
+            //  - "-abc"  — combined short flags (only if EVERY char is a Flag)
+            let chars: Vec<char> = stripped.chars().collect();
+            if chars.is_empty() {
                 positional.push(tok);
                 continue;
-            };
-            if chars.next().is_some() {
-                // Multi-char short like "-abc" — not supported in v1.
-                return Err(CliError::Unknown(tok));
             }
-            if let Some(f) = short_flag.get(&c) {
-                parsed.flags.insert(f.long.clone(), true);
-            } else if let Some(o) = short_opt.get(&c) {
-                let val = iter.next().ok_or_else(|| CliError::MissingOptionValue {
-                    name: o.long.clone(),
-                })?;
-                parsed.options.insert(o.long.clone(), val);
+            if chars.len() == 1 {
+                let c = chars[0];
+                if let Some(f) = short_flag.get(&c) {
+                    parsed.flags.insert(f.long.clone(), true);
+                } else if let Some(o) = short_opt.get(&c) {
+                    let val = iter.next().ok_or_else(|| CliError::MissingOptionValue {
+                        name: o.long.clone(),
+                    })?;
+                    parsed.options.insert(o.long.clone(), val);
+                } else {
+                    return Err(CliError::Unknown(tok));
+                }
             } else {
-                return Err(CliError::Unknown(tok));
+                // Combined short: every char must be a registered flag.
+                let all_flags = chars.iter().all(|c| short_flag.contains_key(c));
+                if !all_flags {
+                    return Err(CliError::Unknown(tok));
+                }
+                for c in chars {
+                    let f = short_flag
+                        .get(&c)
+                        .expect("verified all_flags above");
+                    parsed.flags.insert(f.long.clone(), true);
+                }
             }
         } else {
             positional.push(tok);
@@ -474,6 +499,37 @@ mod tests {
     fn help_token_is_reported_separately() {
         let err = parse(&sample_cmd(), argv(&["--help"])).unwrap_err();
         assert!(matches!(err, CliError::HelpRequested));
+    }
+
+    #[test]
+    fn parses_long_option_with_inline_value() {
+        let p = parse(&sample_cmd(), argv(&["alice", "--greeting=hi"])).unwrap();
+        assert_eq!(p.option("greeting"), Some("hi"));
+    }
+
+    #[test]
+    fn inline_value_on_a_flag_is_rejected() {
+        let err = parse(&sample_cmd(), argv(&["alice", "--loud=yes"])).unwrap_err();
+        assert!(matches!(err, CliError::Unknown(_)));
+    }
+
+    #[test]
+    fn combined_short_flags_are_expanded() {
+        // Build a command with two short flags so we can combine them.
+        let cmd = Command::new("x", "x")
+            .arg(Arg::new("name", "n"))
+            .flag(Flag::new("verbose", "v").short('v'))
+            .flag(Flag::new("quiet", "q").short('q'));
+        let p = parse(&cmd, argv(&["alice", "-vq"])).unwrap();
+        assert!(p.flag("verbose"));
+        assert!(p.flag("quiet"));
+    }
+
+    #[test]
+    fn combined_short_with_an_option_is_rejected() {
+        // -lg combines flag -l with option -g, which would need a value.
+        let err = parse(&sample_cmd(), argv(&["alice", "-lg"])).unwrap_err();
+        assert!(matches!(err, CliError::Unknown(_)));
     }
 
     #[test]

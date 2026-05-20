@@ -128,14 +128,18 @@ FLAGS
 For pre-alpha we cover the 80% case. Not (yet) supported:
 
 - **Subcommands.** `Command::sub(name, sub_cmd)` is planned.
-- **Combined short flags.** `-abc` for `-a -b -c` is not parsed (each
-  flag must be its own token).
-- **`--key=value`.** Use `--key value` (space-separated).
 - **Type-checked argument values.** Today everything is a `String`;
   the user converts. A future `Arg::<i32>::new(...)` will integrate
   with [`Schema`](../data/schemas.md) for primitive coercion.
 - **Env-var fallback.** Combine with
   [`effect-config`](./config.md) for that pattern.
+
+Supported syntax:
+
+- `--key value` and `--key=value` are both valid.
+- `-x` for a short flag or option (with `-x value` for options).
+- `-abc` to combine short flags (only when every char is a registered
+  `Flag` — combining with an option errors out, since it'd need a value).
 
 For complex CLIs that need shell completion, `clap` interop, or
 grouped flags, today's recommendation is to use `clap` directly and
@@ -149,7 +153,5 @@ types and Effect composition matter more than feature parity.
 - Type-checked args via Schema
 - Env-var fallback (overlap with `effect-config`)
 - Shell completion (bash / zsh / fish)
-- Combined short flags
-- `--key=value` syntax
 
 [`effect-printer`]: https://docs.rs/effect-printer

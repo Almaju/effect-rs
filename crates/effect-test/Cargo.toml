@@ -1,0 +1,17 @@
+[package]
+name = "effect-test"
+version = "0.0.1"
+description = "Test helpers for the effect crate — assertion combinators and log capture"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

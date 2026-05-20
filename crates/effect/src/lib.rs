@@ -771,10 +771,11 @@ where
     /// interruption pass through unchanged — use
     /// [`Effect::catch_all_cause`] if you need to inspect them.
     ///
-    /// **Known limitation:** for compound causes (produced by `zip` when
-    /// both arms fail) that contain typed failures, `catch_all` does not
-    /// recover and will panic when converting types. Use `catch_all_cause`
-    /// or `sandbox` to handle them explicitly.
+    /// Compound causes (`Sequential` / `Parallel`, produced by `zip`
+    /// when both arms fail) are dug into: if any `Fail` leaf exists
+    /// anywhere in the cause, the handler is invoked with the first
+    /// one and any sibling defects/interruption are discarded. Use
+    /// `catch_all_cause` if you need to inspect the full cause tree.
     pub fn catch_all<E2>(
         self,
         handler: impl Fn(E) -> Effect<A, E2, R> + Send + Sync + 'static,
@@ -792,8 +793,19 @@ where
                 Box::pin(async move {
                     match run(r).await {
                         Exit::Success(a) => Exit::Success(a),
-                        Exit::Failure(Cause::Fail(e)) => (handler(e).run_fn)(r2).await,
-                        Exit::Failure(other) => Exit::Failure(other.change_failure_type()),
+                        Exit::Failure(c) => {
+                            if c.failure().is_some() {
+                                // There's a Fail somewhere; take the first
+                                // and run the handler. Other leaves are
+                                // discarded.
+                                let e = c.into_failure().expect("just verified");
+                                (handler(e).run_fn)(r2).await
+                            } else {
+                                // Pure Die/Interrupt (possibly nested in
+                                // Sequential/Parallel). Safe to convert.
+                                Exit::Failure(c.change_failure_type())
+                            }
+                        }
                     }
                 })
             }),
@@ -1180,6 +1192,22 @@ mod tests {
     }
 
     // ── Error handling ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn catch_all_recovers_from_compound_parallel_failure() {
+        // Previously a known wart: zip-of-failures produces a
+        // Cause::Parallel, and catch_all would panic during type
+        // conversion. Now it digs in, picks the first Fail, and runs
+        // the handler.
+        let a = Effect::<i32, String, ()>::fail("first".into());
+        let b = Effect::<i32, String, ()>::fail("second".into());
+        let recovered = a.zip(b).catch_all(|first_e| {
+            Effect::<(i32, i32), String, ()>::succeed((first_e.len() as i32, 0))
+        });
+        let exit = recovered.execute().await;
+        // The first Fail is "first" (5 chars).
+        assert_eq!(exit.ok(), Some((5, 0)));
+    }
 
     #[tokio::test]
     async fn catch_all_recovers_from_typed_failure() {

@@ -101,40 +101,43 @@ assert_eq!(log[0].1[0], SqlValue::Text("alice".into()));
 # }
 ```
 
-## Writing a real driver
+## SQLite driver — `effect-sql-sqlite`
 
-Until per-driver crates ship, here's the sketch. For an `sqlx::SqlitePool`:
+The companion crate `effect-sql-sqlite` wraps `sqlx::SqlitePool`. Add
+it alongside `effect-sql`:
 
-```rust,ignore
-use effect_sql::*;
-use sqlx::sqlite::{SqlitePool, SqliteRow};
-use sqlx::{Column, Row as _};
-
-pub struct SqliteExecutor(pub SqlitePool);
-
-impl SqlExecutor for SqliteExecutor {
-    fn execute(&self, sql: String, params: Vec<SqlValue>) -> AsyncResult<Result<u64, SqlError>> {
-        let pool = self.0.clone();
-        Box::pin(async move {
-            let mut q = sqlx::query(&sql);
-            for p in params { q = bind_value(q, p); }
-            q.execute(&pool).await
-                .map(|r| r.rows_affected())
-                .map_err(|e| SqlError::Database(e.to_string()))
-        })
-    }
-    // fetch_all: similar; iterate columns and convert SqliteRow → Row.
-}
+```toml
+[dependencies]
+effect-sql        = { version = "0.0.1" }
+effect-sql-sqlite = { version = "0.0.1" }
 ```
 
-A future `effect-sql-sqlite` crate will ship this + a connection pool
-constructor.
+```rust,no_run
+use effect_sql::{execute, fetch_all, SqlValue};
+use effect_sql_sqlite::SqliteExecutor;
+
+# #[tokio::main] async fn main() {
+let db = SqliteExecutor::connect("sqlite::memory:").await.unwrap();
+
+let _ = execute::<SqliteExecutor>(
+    "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+    vec![],
+).run_with(db).await;
+# }
+```
+
+`SqliteExecutor::connect(url)` opens the database (use
+`"sqlite::memory:"` for an ephemeral in-memory DB).
+`SqliteExecutor::with_pool(pool)` wraps an existing
+`sqlx::SqlitePool` if you already have one.
+
+Decoding: SQLite stores values dynamically — the driver tries `i64`,
+`f64`, `String`, `Vec<u8>`, `bool` in order and picks the first that
+succeeds.
 
 ## What's coming
 
-- **`effect-sql-sqlite`** — sqlx-backed driver. SQLite first (no
-  external server, perfect for tests).
-- **`effect-sql-postgres`** — Postgres driver.
+- **`effect-sql-postgres`** — Postgres driver, same shape.
 - **Schema-typed rows** — `fetch_one_as::<T: Schema>(sql, params)` for
   typed row → struct decoding.
 - **Transactions** — `db.transaction(|tx| async { … })`.
