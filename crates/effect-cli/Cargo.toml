@@ -1,0 +1,17 @@
+[package]
+name = "effect-cli"
+version = "0.0.1"
+description = "Effect-typed CLI parser with Printer-rendered help"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+effect-printer = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

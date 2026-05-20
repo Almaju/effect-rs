@@ -83,6 +83,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "effect-cli"
+version = "0.0.1"
+dependencies = [
+ "effect",
+ "effect-printer",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "effect-config"
 version = "0.0.1"
 dependencies = [
@@ -135,6 +145,10 @@ dependencies = [
  "tempfile",
  "tokio",
 ]
+
+[[package]]
+name = "effect-printer"
+version = "0.0.1"
 
 [[package]]
 name = "effect-schema"

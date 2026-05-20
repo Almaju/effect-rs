@@ -1,0 +1,11 @@
+[package]
+name = "effect-printer"
+version = "0.0.1"
+description = "Wadler-style pretty-printing doc combinators with optional ANSI styling"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

@@ -21,6 +21,8 @@
 - [Configuration](./core/config.md)
 - [Logging](./core/logging.md)
 - [Platform Services](./core/platform.md)
+- [Pretty Printing](./core/printer.md)
+- [CLI](./core/cli.md)
 
 # Data
 
