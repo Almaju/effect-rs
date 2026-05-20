@@ -7,6 +7,7 @@
 //! - Requires an environment of type `R` to execute
 
 pub mod exit;
+pub mod fiber;
 pub mod refinement;
 pub mod schedule;
 pub mod sync;
@@ -29,6 +30,7 @@ pub mod schema {
 // don't collide, mirroring how serde re-exports `Serialize`.
 pub use effect_macros::{Brand, Newtype, Schema};
 pub use effect_schema::{Schema, SchemaError};
+pub use fiber::FiberState;
 pub use exit::{Cause, Defect, Exit};
 pub use refinement::Refinement;
 pub use schedule::{Schedule, ScheduleStep};
@@ -215,6 +217,18 @@ where
         Self::die(Defect::new(message))
     }
 
+    /// An effect that immediately fails with `Cause::Interrupt`.
+    /// Useful for self-cancellation; see also [`Effect::uninterruptible`]
+    /// and [`Fiber::interrupt`](crate::fiber) (Phase 1h) for external
+    /// cancellation.
+    pub fn interrupt() -> Self {
+        Effect {
+            run_fn: Arc::new(|_| {
+                Box::pin(async move { Exit::Failure(Cause::Interrupt) })
+            }),
+        }
+    }
+
     /// An effect that fails with the given pre-built [`Cause`].
     pub fn from_cause(cause: Cause<E>) -> Self
     where
@@ -256,8 +270,23 @@ where
     R: Send + Sync + 'static,
 {
     /// Run the effect with a shared environment, producing an [`Exit`].
+    ///
+    /// At the outermost call, a fresh [`FiberState`] is set up as a
+    /// task-local so combinators can observe interruption and (later)
+    /// scopes. Nested `run` calls inherit the surrounding state, so
+    /// `Block::run`-style threading naturally propagates the interrupt
+    /// flag.
     pub async fn run(&self, ctx: Arc<R>) -> Exit<A, E> {
-        (self.run_fn)(ctx).await
+        // If we're already inside a FIBER_STATE scope (nested run from
+        // inside a Block closure, say), reuse it.
+        if fiber::FIBER_STATE.try_with(|_| ()).is_ok() {
+            return (self.run_fn)(ctx).await;
+        }
+        let state = FiberState::new();
+        let run_fn = self.run_fn.clone();
+        fiber::FIBER_STATE
+            .scope(state, async move { (run_fn)(ctx).await })
+            .await
     }
 
     /// Run the effect with an owned environment.
@@ -321,6 +350,10 @@ where
 
     /// Chain effects — monadic bind (`flatMap` in Effect-TS). The
     /// continuation runs only on success; any failure passes through.
+    ///
+    /// Checks the fiber's interrupt flag before invoking the
+    /// continuation; if set (and we're in an interruptible region),
+    /// short-circuits with `Cause::Interrupt`.
     pub fn flat_map<B>(
         self,
         f: impl Fn(A) -> Effect<B, E, R> + Send + Sync + 'static,
@@ -337,7 +370,12 @@ where
                 let r2 = r.clone();
                 Box::pin(async move {
                     match run(r).await {
-                        Exit::Success(a) => (f(a).run_fn)(r2).await,
+                        Exit::Success(a) => {
+                            if fiber::interrupted_here() {
+                                return Exit::Failure(Cause::Interrupt);
+                            }
+                            (f(a).run_fn)(r2).await
+                        }
                         Exit::Failure(c) => Exit::Failure(c),
                     }
                 })
@@ -372,6 +410,42 @@ where
     /// Discard the success value.
     pub fn void(self) -> Effect<(), E, R> {
         self.as_value(())
+    }
+
+    /// Mark a region as interruptible. Within it, `flat_map` boundaries
+    /// observe the fiber's interrupt flag and may short-circuit with
+    /// `Cause::Interrupt`. This is the **default** — use this only to
+    /// re-enable interruption inside an `.uninterruptible()` block.
+    pub fn interruptible(self) -> Self {
+        let run_fn = self.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                Box::pin(async move {
+                    fiber::INTERRUPTIBLE
+                        .scope(true, async move { run(r).await })
+                        .await
+                })
+            }),
+        }
+    }
+
+    /// Mark a region as **un**interruptible. Inside it, the interrupt
+    /// flag is still observable (via `FiberState::is_interrupted`) but
+    /// `flat_map` boundaries no longer short-circuit — critical
+    /// sections finish.
+    pub fn uninterruptible(self) -> Self {
+        let run_fn = self.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                Box::pin(async move {
+                    fiber::INTERRUPTIBLE
+                        .scope(false, async move { run(r).await })
+                        .await
+                })
+            }),
+        }
     }
 }
 
@@ -1134,6 +1208,108 @@ mod tests {
             Exit::Failure(Cause::Die(_)) => {}
             other => panic!("expected Die after round-trip, got {other:?}"),
         }
+    }
+
+    // ── Interrupt ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn interrupt_constructor_produces_interrupt_cause() {
+        let effect = Effect::<i32, String, ()>::interrupt();
+        match effect.execute().await {
+            Exit::Failure(Cause::Interrupt) => {}
+            other => panic!("expected Interrupt, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupt_propagates_through_flat_map() {
+        let program = Effect::<i32, String, ()>::interrupt()
+            .flat_map(|_| Effect::<i32, String, ()>::succeed(99));
+        match program.execute().await {
+            Exit::Failure(Cause::Interrupt) => {}
+            other => panic!("expected Interrupt, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupt_flag_short_circuits_at_flat_map_boundary() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let after = Arc::new(AtomicUsize::new(0));
+        let after_clone = after.clone();
+        let program = Effect::<_, String, ()>::sync(|| {
+            // Set the interrupt flag mid-stream.
+            crate::fiber::current().signal_interrupt();
+            Ok::<i32, String>(1)
+        })
+        .flat_map(move |_| {
+            let after_clone = after_clone.clone();
+            Effect::<_, String, ()>::sync(move || {
+                after_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(2)
+            })
+        });
+
+        match program.execute().await {
+            Exit::Failure(Cause::Interrupt) => {}
+            other => panic!("expected Interrupt, got {other:?}"),
+        }
+        // The post-interrupt step must NOT have run.
+        assert_eq!(after.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn uninterruptible_finishes_critical_section() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let after = Arc::new(AtomicUsize::new(0));
+        let after_clone = after.clone();
+        let critical = Effect::<_, String, ()>::sync(|| {
+            crate::fiber::current().signal_interrupt();
+            Ok::<i32, String>(1)
+        })
+        .flat_map(move |_| {
+            let after_clone = after_clone.clone();
+            Effect::<_, String, ()>::sync(move || {
+                after_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(2)
+            })
+        })
+        .uninterruptible();
+
+        // Inside the uninterruptible region, the flag is set but the
+        // boundary does not short-circuit.
+        let exit = critical.execute().await;
+        assert_eq!(exit.ok(), Some(2));
+        assert_eq!(after.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn interruptible_undoes_outer_uninterruptible() {
+        // interruptible/uninterruptible nest lexically: the
+        // **innermost** wrapping wins. So an inner .interruptible()
+        // re-enables short-circuit even inside an outer
+        // .uninterruptible().
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let after = Arc::new(AtomicUsize::new(0));
+        let after_clone = after.clone();
+        let program = Effect::<_, String, ()>::sync(|| {
+            crate::fiber::current().signal_interrupt();
+            Ok::<i32, String>(1)
+        })
+        .flat_map(move |_| {
+            let after_clone = after_clone.clone();
+            Effect::<_, String, ()>::sync(move || {
+                after_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(2)
+            })
+        })
+        .interruptible()
+        .uninterruptible();
+
+        match program.execute().await {
+            Exit::Failure(Cause::Interrupt) => {}
+            other => panic!("expected Interrupt from innermost interruptible, got {other:?}"),
+        }
+        assert_eq!(after.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
