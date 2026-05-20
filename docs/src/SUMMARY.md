@@ -17,6 +17,7 @@
 - [Retries and Schedules](./core/retries.md)
 - [Scopes and Resources](./core/scopes-and-resources.md)
 - [Concurrency](./core/concurrency.md)
+- [Streams](./core/streams.md)
 
 # Data
 

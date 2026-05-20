@@ -1,0 +1,16 @@
+[package]
+name = "effect-stream"
+version = "0.0.1"
+description = "Effect-typed async streams — Stream<A, E, R> + combinators + terminals"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+futures = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

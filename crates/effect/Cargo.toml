@@ -14,6 +14,9 @@ async-channel = { workspace = true }
 effect-data = { workspace = true }
 effect-macros = { workspace = true }
 effect-schema = { workspace = true }
+# Note: effect-stream is NOT re-exported here because it depends on
+# the `effect` crate itself (Stream terminals return Effect). Users
+# of streams add `effect-stream` as a separate workspace/Cargo dep.
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

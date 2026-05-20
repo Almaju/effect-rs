@@ -25,6 +25,10 @@ pub mod schema {
     pub use effect_schema::*;
 }
 
+// `effect_stream` depends on `effect` (its terminals produce `Effect`s),
+// so it can't be re-exported here without a dependency cycle. Add
+// `effect-stream` as a separate Cargo dep and `use effect_stream::Stream;`.
+
 // Both the derive macro and the trait are exported under the name
 // `Schema`. They live in different namespaces (macro / type) so they
 // don't collide, mirroring how serde re-exports `Serialize`.
