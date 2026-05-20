@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/effect",
     "crates/effect-ai",
+    "crates/effect-ai-anthropic",
     "crates/effect-ai-openai",
     "crates/effect-cli",
     "crates/effect-config",
@@ -21,6 +22,7 @@ members = [
     "crates/effect-stream",
     "crates/effect-test",
     "crates/effect-workflow",
+    "examples/notes",
     "examples/todo",
 ]
 
@@ -36,6 +38,7 @@ tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "sync", "ti
 async-channel = "2"
 effect = { path = "crates/effect", version = "0.0.1" }
 effect-ai = { path = "crates/effect-ai", version = "0.0.1" }
+effect-ai-anthropic = { path = "crates/effect-ai-anthropic", version = "0.0.1" }
 effect-ai-openai = { path = "crates/effect-ai-openai", version = "0.0.1" }
 effect-cli = { path = "crates/effect-cli", version = "0.0.1" }
 effect-config = { path = "crates/effect-config", version = "0.0.1" }

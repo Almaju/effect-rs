@@ -233,6 +233,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "effect-ai-anthropic"
+version = "0.0.1"
+dependencies = [
+ "effect-ai",
+ "effect-http",
+ "effect-schema",
+ "tokio",
+]
+
+[[package]]
 name = "effect-ai-openai"
 version = "0.0.1"
 dependencies = [
@@ -267,6 +277,25 @@ name = "effect-data"
 version = "0.0.1"
 dependencies = [
  "im",
+]
+
+[[package]]
+name = "effect-example-notes"
+version = "0.0.0"
+dependencies = [
+ "effect",
+ "effect-cli",
+ "effect-config",
+ "effect-http-server",
+ "effect-logging",
+ "effect-schema",
+ "effect-sql",
+ "effect-sql-sqlite",
+ "reqwest",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -1,0 +1,17 @@
+[package]
+name = "effect-ai-anthropic"
+version = "0.0.1"
+description = "Anthropic provider for effect-ai (LlmProvider via effect-http)"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect-ai = { workspace = true }
+effect-http = { workspace = true }
+effect-schema = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

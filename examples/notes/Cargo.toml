@@ -1,0 +1,30 @@
+[package]
+name = "effect-example-notes"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "notes"
+path = "src/main.rs"
+
+[dependencies]
+effect = { workspace = true }
+effect-cli = { workspace = true }
+effect-config = { workspace = true }
+effect-http-server = { workspace = true }
+effect-logging = { workspace = true }
+effect-schema = { workspace = true }
+effect-sql = { workspace = true }
+effect-sql-sqlite = { workspace = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+tokio = { workspace = true, features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false }

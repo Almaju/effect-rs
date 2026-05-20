@@ -24,6 +24,7 @@
 - [Pretty Printing](./core/printer.md)
 - [CLI](./core/cli.md)
 - [HTTP Client](./core/http.md)
+- [HTTP Server](./core/server.md)
 - [SQL](./core/sql.md)
 - [RPC](./core/rpc.md)
 - [AI](./core/ai.md)
@@ -39,6 +40,7 @@
 # Examples
 
 - [Todo Walkthrough](./examples/todo-walkthrough.md)
+- [Notes — multi-service](./examples/notes-walkthrough.md)
 
 # Project
 
