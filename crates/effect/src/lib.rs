@@ -229,6 +229,79 @@ where
         }
     }
 
+    /// Run `handler` when `self` completes with a **pure interrupt**
+    /// (Cause::Interrupt or a compound made up only of Interrupts).
+    /// Typed failures and defects do NOT trigger the handler.
+    ///
+    /// The handler runs uninterruptibly so cancellation doesn't
+    /// prevent its cleanup.
+    pub fn on_interrupt<F, Fut>(self, handler: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let run_fn = self.run_fn;
+        let handler = Arc::new(handler);
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                let handler = handler.clone();
+                Box::pin(async move {
+                    let exit = run(r).await;
+                    let fire = match &exit {
+                        Exit::Failure(c) => c.is_interrupted_only(),
+                        _ => false,
+                    };
+                    if fire {
+                        fiber::INTERRUPTIBLE
+                            .scope(false, async move { handler().await })
+                            .await;
+                    }
+                    exit
+                })
+            }),
+        }
+    }
+
+    /// Like [`Effect::fork`], but the child is **interrupted when the
+    /// surrounding [`Effect::scoped`] closes**. Panics at runtime if
+    /// called outside a scoped region.
+    ///
+    /// Useful for "start a background helper that lives only as long
+    /// as this scope". The child still runs to completion of its
+    /// current step on cancel; pair with `Fiber::join().await` inside
+    /// the scope if you need to wait for cleanup.
+    pub fn fork_scoped(self) -> Effect<Fiber<A, E>, E, R> {
+        let run_fn = self.run_fn;
+        Effect {
+            run_fn: Arc::new(move |r| {
+                let run = run_fn.clone();
+                Box::pin(async move {
+                    let scope = match fiber::current_scope() {
+                        Some(s) => s,
+                        None => {
+                            return Exit::Failure(Cause::Die(Defect::new(
+                                "fork_scoped called outside an Effect::scoped region",
+                            )));
+                        }
+                    };
+                    let child_state = FiberState::new();
+                    let interrupt_flag = child_state.interrupt_handle();
+                    let handle = tokio::spawn(fiber::FIBER_STATE.scope(
+                        child_state,
+                        async move { run(r).await },
+                    ));
+                    let intr_for_finalizer = interrupt_flag.clone();
+                    scope.add_finalizer(Box::pin(async move {
+                        intr_for_finalizer
+                            .store(true, std::sync::atomic::Ordering::SeqCst);
+                    }));
+                    Exit::Success(Fiber { handle, interrupt_flag })
+                })
+            }),
+        }
+    }
+
     /// Run `inner` inside a fresh [`Scope`]. Finalizers registered via
     /// [`acquire_release`] run when this effect completes — for
     /// success, typed failure, defect, or interruption alike — in
@@ -376,6 +449,83 @@ where
             }),
         }
     }
+}
+
+// ── for_each_par ──────────────────────────────────────────────────
+
+/// Apply `f` to every item with at most `concurrency` effects running
+/// concurrently. Returns the results in input order.
+///
+/// All child tasks share the **parent's interrupt flag**: a failure of
+/// any one signals the others to short-circuit (structured concurrency
+/// in the small). On the first observed failure the result is returned
+/// immediately; in-flight tasks continue running but their results are
+/// discarded.
+pub fn for_each_par<T, B, E, R, F>(
+    items: Vec<T>,
+    concurrency: usize,
+    f: F,
+) -> Effect<Vec<B>, E, R>
+where
+    T: Clone + Send + Sync + 'static,
+    B: Send + 'static,
+    E: Send + 'static,
+    R: Send + Sync + 'static,
+    F: Fn(T) -> Effect<B, E, R> + Send + Sync + 'static,
+{
+    let items = Arc::new(items);
+    let f = Arc::new(f);
+    Effect::from_fn_exit(move |r: Arc<R>| {
+        let f = f.clone();
+        let items = items.clone();
+        Box::pin(async move {
+            let parent_state = fiber::current();
+            let sem = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
+            let mut handles = Vec::with_capacity(items.len());
+            for item in items.iter().cloned() {
+                let permit = match sem.clone().acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        return Exit::Failure(Cause::Die(Defect::new(
+                            "for_each_par: semaphore closed unexpectedly",
+                        )));
+                    }
+                };
+                let f = f.clone();
+                let r = r.clone();
+                let state = parent_state.clone();
+                handles.push(tokio::spawn(fiber::FIBER_STATE.scope(
+                    state,
+                    async move {
+                        let _permit = permit;
+                        (f(item).run_fn)(r).await
+                    },
+                )));
+            }
+
+            let mut results = Vec::with_capacity(handles.len());
+            for h in handles {
+                match h.await {
+                    Ok(Exit::Success(b)) => results.push(b),
+                    Ok(failure) => {
+                        // Signal siblings to short-circuit via the
+                        // shared interrupt flag.
+                        parent_state.signal_interrupt();
+                        return failure.map(|_| unreachable!());
+                    }
+                    Err(je) if je.is_cancelled() => {
+                        return Exit::Failure(Cause::Interrupt);
+                    }
+                    Err(je) => {
+                        return Exit::Failure(Cause::Die(Defect::new(format!(
+                            "for_each_par fork panic: {je}"
+                        ))));
+                    }
+                }
+            }
+            Exit::Success(results)
+        })
+    })
 }
 
 // ── acquire_release ───────────────────────────────────────────────

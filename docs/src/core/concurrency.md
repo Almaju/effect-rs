@@ -108,6 +108,80 @@ shared with the child's `FiberState`). The child observes it at the
 `Cause::Interrupt` — unless that boundary lives inside an
 `.uninterruptible()` region.
 
+### `fork_scoped` — child tied to surrounding scope
+
+```rust,no_run
+use effect::Effect;
+
+# #[tokio::main] async fn main() {
+# let background = Effect::<(), String, ()>::succeed(());
+# let work = Effect::<i32, String, ()>::succeed(0);
+let program = Effect::<i32, String, ()>::scoped(
+    Effect::<_, String, ()>::block(move |g| {
+        let bg = background.clone();
+        let work = work.clone();
+        async move {
+            let _bg_fiber = g.run(bg.fork_scoped()).await?;   // dies with scope
+            g.run(work).await
+        }
+    })
+);
+# }
+```
+
+`fork_scoped` registers an interrupt-on-scope-close finalizer for the
+child. When the surrounding `Effect::scoped` closes — for any reason —
+the child gets its flag set. Useful for "start a background helper for
+the lifetime of this scope".
+
+Outside a `scoped` region, `fork_scoped` fails with `Cause::Die`.
+
+## `for_each_par` — bounded parallel map
+
+```rust,no_run
+use effect::{Effect, for_each_par};
+
+# #[tokio::main] async fn main() {
+let urls = vec!["a", "b", "c", "d", "e"];
+
+let program: Effect<Vec<String>, String, ()> = for_each_par(urls, 3, |url| {
+    Effect::from_fn(move |_| async move {
+        // ... fetch ...
+        Ok(format!("fetched {url}"))
+    })
+});
+
+let results = program.execute().await.ok().unwrap();
+assert_eq!(results.len(), 5);
+# }
+```
+
+- At most `concurrency` effects run at once (via an internal semaphore).
+- Results are returned in **input order**.
+- All children **share the parent's interrupt flag** — any failure
+  signals the rest to short-circuit; on first observed failure the
+  result is returned and in-flight tasks become orphans.
+- `concurrency` is clamped to at least 1.
+
+## `on_interrupt` — handle pure cancellation
+
+```rust,no_run
+use effect::Effect;
+
+# #[tokio::main] async fn main() {
+# let main_work = Effect::<i32, String, ()>::succeed(0);
+let program = main_work.on_interrupt(|| async {
+    eprintln!("interrupted — logging it");
+});
+# }
+```
+
+Fires only when the effect's cause is a **pure interrupt** —
+`Cause::Interrupt` or a compound made up entirely of `Interrupt`
+leaves. Typed failures, defects, and successful runs don't trigger it.
+The handler runs uninterruptibly so subsequent cancellation can't
+prevent its cleanup.
+
 ## Interruption
 
 The interrupt flag is per-fiber and per-execution: each `Effect::run`
@@ -129,13 +203,11 @@ uninterruptibly so it can't be cancelled mid-flight.
 
 ## What's coming
 
-- **`Effect::for_each_par(n, f)`** — bounded-parallelism mapping over an
-  iterable, equivalent to Effect-TS's `Effect.forEach(items, f, { concurrency: n })`.
 - **`Effect::race_all([…])`** — N-way race instead of pairwise.
-- **`Fiber::join_with_finalizer`** — join under a scope so the joined
-  fiber's resources get cleaned up automatically.
-- **`Effect::on_interrupt(self, handler)`** — register a handler that
-  fires only when the effect is interrupted (not on success or typed
-  failure).
+- **`Effect::join_par(effects)`** — like `for_each_par` but for a
+  fixed-shape tuple of heterogeneous effects.
+- **`Fiber::interrupt_and_join`** — `interrupt(); join().await` shorthand
+  that returns the child's eventual `Exit`.
 - **Supervised fork** — `fork` variants where the parent's exit
-  automatically interrupts every child it started.
+  automatically interrupts every child it started (subsumes
+  `fork_scoped` once the type-level Scope tracking lands).

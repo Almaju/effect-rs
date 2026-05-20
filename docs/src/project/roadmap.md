@@ -10,7 +10,7 @@ A short summary of the phases:
 | Phase | Theme                            | Headline deliverable                                   |
 | ----- | -------------------------------- | ------------------------------------------------------ |
 | 0     | Prototype (done)                 | `Effect<A,E,R>`, trait-based Layer, todo example.      |
-| 1     | Foundations (mostly done) | `Cause`/`Exit`; `Schedule`/retry/repeat; `Ref`/`Deferred`/`Queue`/`Semaphore`; `Effect::block` do-notation; `effect-macros`; **interrupt/interruptible/uninterruptible** via task-local fiber state; **`Scope` + `acquire_release`**; **`Fiber` + `fork` + `race`**. Still pending: `for_each_par`, `on_interrupt`, supervised fork, `effect-test`. |
+| 1     | **Foundations (done)**     | `Cause`/`Exit`; `Schedule`/retry/repeat; `Ref`/`Deferred`/`Queue`/`Semaphore`; `Effect::block` do-notation; `effect-macros`; interrupt/interruptible/uninterruptible via task-local fiber state; `Scope` + `acquire_release`; `Fiber` + `fork` + `race`; `for_each_par` + `on_interrupt` + `fork_scoped`. Deferred to a later pass: `effect-test` harness, full free-monad interpreter (stack safety + compound-cause handling). |
 | 2     | **Data + Schema (done)**          | `Chunk`/`HashMap`/`HashSet`; typeclass families; `#[derive(Schema)]` + `#[derive(Newtype)]` + `#[derive(Brand)]`; primitives + container Schema impls; Schema → JSON Schema export. |
 | 3     | Streams, STM, Config             | `Stream`/`Sink`/`Channel`; `Tx*`; declarative config.   |
 | 4     | Observability + Platform         | Logger on `tracing`; Metrics; OTel; FS/Terminal/Stdio. |
