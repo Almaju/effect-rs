@@ -19,6 +19,7 @@
 - [Concurrency](./core/concurrency.md)
 - [Streams](./core/streams.md)
 - [Configuration](./core/config.md)
+- [Logging](./core/logging.md)
 
 # Data
 

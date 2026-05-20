@@ -1,0 +1,17 @@
+[package]
+name = "effect-logging"
+version = "0.0.1"
+description = "Effect-wrapped structured logging built on the tracing crate"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
