@@ -20,6 +20,7 @@
 - [Streams](./core/streams.md)
 - [Configuration](./core/config.md)
 - [Logging](./core/logging.md)
+- [Platform Services](./core/platform.md)
 
 # Data
 

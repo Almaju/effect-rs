@@ -1,0 +1,17 @@
+[package]
+name = "effect-platform"
+version = "0.0.1"
+description = "Service traits + live implementations for Clock, Random, FileSystem"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+effect = { workspace = true }
+tokio = { version = "1", features = ["fs", "rt-multi-thread", "time", "macros", "sync"] }
+fastrand = "2"
+
+[dev-dependencies]
+tempfile = "3"
